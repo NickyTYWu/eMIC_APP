@@ -1,0 +1,29 @@
+{
+  "Member": [
+    "InputComponet"
+  ],
+  "InputComponet": [
+    {
+      "Type": 1,
+      "Group_Identifier": "Group2",
+      "Offset": 0,
+      "Mask": 255,
+      "Description_X": 460,
+      "Description_Y": 425,
+      "Description_W": 400,
+      "Description_H": 20,
+      "Description_StringValue": "",
+      "ComboBox_0_X": 458,
+      "ComboBox_0_Y": 100,
+      "ComboBox_0_W": 80,
+      "ComboBox_0_H": 30,
+      "ComboBox_MinValue": 0,
+      "ComboBox_MaxValue": 256,
+      "Result_Description_X": 530,
+      "Result_Description_Y": 450,
+      "Result_Description_W": 500,
+      "Result_Description_H": 30,
+      "Result_Description_StringValue": ""
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="radio_checked.ico">Resources\radio_checked@2x.png</file>
+        <file alias="radio_unchecked.ico">Resources\radio_unchecked@2x.png</file>
+        <file alias="Page0_Component.json">Resources\Page0_Component.json</file>
+        <file alias="Page2_Component.json">Resources\Page2_Component.json</file>
+        <file alias="Page3_Component.json">Resources\Page3_Component.json</file>
+        <file alias="Page4_Component.json">Resources\Page4_Component.json</file>
+               <file alias="default_AppConfig.ini">Resources\default_AppConfig.ini</file>
+    </qresource>
+</RCC>
