@@ -339,6 +339,8 @@ void MainWindow::initPage0()
         ui->tableWidget_page0->item(i,1)->setText(page0Manager.getAcronym(i));
         ui->tableWidget_page0->item(i,2)->setText(page0Manager.getValue(i));
     }
+
+    qDebug() << "[MainWindow]initPage0";
 }
 
 void MainWindow::initPage2()
@@ -2087,7 +2089,7 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
                         checkRegValue=13;
                 }
             }
-            else if(memberIndex==46)
+            else if(memberIndex==47)
             {
                 if(checkRegValue!=4 && checkRegValue!=6 && checkRegValue!=7)
                     checkRegValue=8;

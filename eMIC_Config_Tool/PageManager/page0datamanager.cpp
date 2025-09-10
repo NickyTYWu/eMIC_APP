@@ -29,6 +29,7 @@ Page0DataManager::Page0DataManager() {
         { REG_READ_WRITE,"0x33", "INT_MASK0",    "0xFF" },
         { REG_READ_ONLY ,"0x36", "INT_LTCH0",    "0x00" },
         { REG_READ_WRITE,"0x3B", "BIAS_CFG",     "0x60" },
+        { REG_READ_WRITE,"0x3C", "CH1_CFG0",     "0x40" },
         { REG_READ_WRITE,"0x3E", "CH1_CFG2",     "0xC9" },
         { REG_READ_WRITE,"0x3F", "CH1_CFG3",     "0x80" },
         { REG_READ_WRITE,"0x40", "CH1_CFG4",     "0x00" },

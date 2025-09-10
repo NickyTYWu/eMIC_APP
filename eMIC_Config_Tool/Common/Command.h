@@ -14,7 +14,7 @@ extern "C" {
 
 #define RCV_CMD_MAX_LEN 132
 
-#define PAGE0_REG_MAX_SIZE 48
+#define PAGE0_REG_MAX_SIZE 49
 #define PAGE1_REG_MAX_SIZE 2
 #define PAGE2_REG_MAX_SIZE 121
 #define PAGE3_REG_MAX_SIZE 121

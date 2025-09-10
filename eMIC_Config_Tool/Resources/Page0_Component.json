@@ -27,6 +27,7 @@
     "REG_0x33",
     "REG_0x36",
     "REG_0x3B",
+    "REG_0x3C",
     "REG_0x3E",
     "REG_0x3F",
     "REG_0x40",
@@ -2732,6 +2733,39 @@
       "RadioButton_3_H": 20,
       "RadioButton_3_Option": "7d = MICBIAS configured as GPI2",
       "RadioButton_3_ID": 7
+    }
+  ],
+  "REG_0x3C": [
+    {
+      "Type": 0,
+      "Group_Identifier": "Group0",
+      "NumberOfRadioButton": 2,
+      "Offset": 5,
+      "Mask": 3,
+      "GroupBox_X": 450,
+      "GroupBox_Y": 100,
+      "GroupBox_W": 450,
+      "GroupBox_H": 120,
+      "GroupBox_Title": "CH1_INSRC",
+      "Description_X": 460,
+      "Description_Y": 115,
+      "Description_W": 385,
+      "Description_H": 30,
+      "Description_StringValue": "Channel 1 input configuration.",
+      "RadioButton_0_Read_Only": 0,
+      "RadioButton_0_X": 460,
+      "RadioButton_0_Y": 145,
+      "RadioButton_0_W": 385,
+      "RadioButton_0_H": 20,
+      "RadioButton_0_Option": "0d = Input Source is not enabled",
+      "RadioButton_0_ID": 0,
+      "RadioButton_1_Read_Only": 0,
+      "RadioButton_1_X": 460,
+      "RadioButton_1_Y": 170,
+      "RadioButton_1_W": 385,
+      "RadioButton_1_H": 30,
+      "RadioButton_1_Option": "2d = Digital microphone PDM input(configure the \r\nGPO and GPI pins accordingly for PDMDIN1 and PDMCLK)",
+      "RadioButton_1_ID": 2
     }
   ],
   "REG_0x3E": [
