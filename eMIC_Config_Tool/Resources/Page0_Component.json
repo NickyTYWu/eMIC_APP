@@ -3585,7 +3585,7 @@
       "RadioButton_1_W": 385,
       "RadioButton_1_H": 30,
       "RadioButton_1_Option": "1d = 2-channel summation mode is enabled to\r\ngenerate a (CH1 +CH2) / 2 output",
-      "RadioButton_1_ID": 2
+      "RadioButton_1_ID": 1
     },
     {
       "Type": 0,

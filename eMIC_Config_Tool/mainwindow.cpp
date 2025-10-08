@@ -1420,12 +1420,13 @@ void MainWindow::regSlelectChange(int index)
     if(ui->tabWidget->currentIndex()==0)
     {
         uint8_t RegValue=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),2)->text()).toInt(NULL,16);
-        if(ui->tableWidget_page0->currentRow()==4)
+        uint8_t RegAddress=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),0)->text()).toInt(NULL,16);
+        if(RegAddress==0x08)
         {
             RegValue=RegValue&~(regOffset[ui->tableWidget_page0->currentRow()].btnGrup3Mask<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup3Offset);
             RegValue|=index<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup3Offset;
         }
-        else
+        else if(RegAddress==0x0B||RegAddress==0x0C||RegAddress==0x0D||RegAddress==0x0E)
         {
             RegValue=RegValue&~(regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Mask<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Offset);
             RegValue|=index<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Offset;
@@ -1433,7 +1434,7 @@ void MainWindow::regSlelectChange(int index)
         QString value="0x"+QString("%1").arg(RegValue, 2, 16, QLatin1Char('0')).toUpper();
         ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),2)->setText(value);
 
-        if(ui->tableWidget_page0->currentRow()==4)
+        if(RegAddress==0x08)
         {
             if(comboBox->currentIndex()==0)
                 descriptionLabel[3]->setText("ASI data MSB location has no offset and is as per standard protocol");
@@ -1443,7 +1444,7 @@ void MainWindow::regSlelectChange(int index)
                 descriptionLabel[3]->setText(QString::asprintf("ASI data MSB location (TDM mode is slot 0 or I2S, LJ mode is the left and right slot 0)\r\noffset of %d BCLK cycle with respect to standard protocol",comboBox->currentIndex()));
             }
         }
-        else
+        else if(RegAddress==0x0B||RegAddress==0x0C||RegAddress==0x0D||RegAddress==0x0E)
         {
             if(comboBox->currentIndex()/32==1)
                 descriptionLabel[1]->setText(QString::asprintf("TDM is slot %d or I2S, LJ is right slot %d",comboBox->currentIndex(),comboBox->currentIndex()%32));
@@ -1488,13 +1489,14 @@ void MainWindow::regSliderChange(int index)
     qDebug() << "[MainWindow]regSliderChange:"<<index;
 
     uint8_t RegValue=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),2)->text()).toInt(NULL,16);
+    uint8_t RegAddress=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),0)->text()).toInt(NULL,16);
     RegValue=RegValue&~(regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Mask<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Offset);
     RegValue|=index<<regOffset[ui->tableWidget_page0->currentRow()].btnGrup1Offset;
 
 
-    ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),2)->setText(QString("0x%1").arg(RegValue, 2, 16, QLatin1Char('0')));
+    ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),2)->setText("0x"+QString("%1").arg(RegValue, 2, 16, QLatin1Char('0')).toUpper());
 
-    if(ui->tableWidget_page0->currentRow()==27||ui->tableWidget_page0->currentRow()==31||ui->tableWidget_page0->currentRow()==34||ui->tableWidget_page0->currentRow()==37)
+    if(RegAddress==0x3E||RegAddress==0x43||RegAddress==0x48||RegAddress==0x4D)
     {
         if(index==0)
             descriptionLabel[1]->setText(QString::asprintf("Digital volume is muted"));
@@ -1504,7 +1506,7 @@ void MainWindow::regSliderChange(int index)
             descriptionLabel[1]->setText(QString::asprintf("Digital volume control is set to %.1f dB",((index-1)*0.5)-100));
         }
     }
-    else if(ui->tableWidget_page0->currentRow()==29||ui->tableWidget_page0->currentRow()==33||ui->tableWidget_page0->currentRow()==36||ui->tableWidget_page0->currentRow()==39)
+    else if(RegAddress==0x40||RegAddress==0x45||RegAddress==0x4A||RegAddress==0x4F)
     {
         if(index==0)
         {
@@ -2165,7 +2167,9 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
             descriptionLabel[group+1]->setGeometry(Result_Description_X,Result_Description_Y,Result_Description_W,Result_Description_H);
             if(ui->tabWidget->currentIndex()==0)
             {
-                if(ui->tableWidget_page0->currentRow()==4)
+                uint8_t RegAddress=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),0)->text()).toInt(NULL,16);
+
+                if(RegAddress==0x08)
                 {
                     if(comboBox->currentIndex()==0)
                         descriptionLabel[group+1]->setText("ASI data MSB location has no offset and is as per standard protocol");
@@ -2175,7 +2179,7 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
                         descriptionLabel[group+1]->setText(QString::asprintf("ASI data MSB location (TDM mode is slot 0 or I2S, LJ mode is the left and right slot 0)\r\noffset of %d BCLK cycle with respect to standard protocol",comboBox->currentIndex()));
                     }
                 }
-                else
+                else if(RegAddress==0x0B||RegAddress==0x0C||RegAddress==0x0D||RegAddress==0x0E)
                 {
                     if(comboBox->currentIndex()/32==1)
                         descriptionLabel[group+1]->setText(QString::asprintf("TDM is slot %d or I2S, LJ is right slot %d",comboBox->currentIndex(),comboBox->currentIndex()%32));
@@ -2219,6 +2223,7 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
             descriptionLabel[group]->show();
 
             //int checkRegValue=(RegValue&(regOffset[memberIndex].btnGrup1Mask<<regOffset[memberIndex].btnGrup1Offset))>>regOffset[memberIndex].btnGrup1Offset;
+            uint8_t RegAddress=(ui->tableWidget_page0->item(ui->tableWidget_page0->currentRow(),0)->text()).toInt(NULL,16);
 
             slider = new QSlider(Qt::Horizontal,this);
             slider->setRange(Slider_MinValue,Slider_MaxValue);
@@ -2231,7 +2236,7 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
 
             descriptionLabel[group+1] = new QLabel(this);
             descriptionLabel[group+1]->setGeometry(Result_Description_X,Result_Description_Y,Result_Description_W,Result_Description_H);
-            if(ui->tableWidget_page0->currentRow()==27||ui->tableWidget_page0->currentRow()==31||ui->tableWidget_page0->currentRow()==34||ui->tableWidget_page0->currentRow()==37)
+            if(RegAddress==0x3E||RegAddress==0x43||RegAddress==0x48||RegAddress==0x4D)
             {
                 if(checkRegValue==0)
                     descriptionLabel[group+1]->setText(QString::asprintf("Digital volume is muted"));
@@ -2241,7 +2246,7 @@ void MainWindow::DrawPageComponent(const QString& filename, int memberIndex)
                     descriptionLabel[group+1]->setText(QString::asprintf("Digital volume control is set to %.1f dB",((checkRegValue-1)*0.5)-100));
                 }
             }
-            else if(ui->tableWidget_page0->currentRow()==29||ui->tableWidget_page0->currentRow()==33||ui->tableWidget_page0->currentRow()==36||ui->tableWidget_page0->currentRow()==39)
+            else if(RegAddress==0x40||RegAddress==0x45||RegAddress==0x4A||RegAddress==0x4F)
             {
                 if(checkRegValue==0)
                 {

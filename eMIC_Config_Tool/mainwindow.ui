@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>eMIC_Config_Tool V1.1</string>
+   <string>eMIC_Config_Tool V1.2</string>
   </property>
   <property name="styleSheet">
    <string notr="true">gridline-color: rgb(255, 255, 255);
