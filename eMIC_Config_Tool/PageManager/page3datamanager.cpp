@@ -2,7 +2,7 @@
 
 Page3DataManager::Page3DataManager() {
     pageList = {
-        {REG_READ_WRITE, "0x03", "PAGE_CFG"        , "0x03"},
+        {REG_READ_WRITE, "0x00", "PAGE_CFG"        , "0x03"},
         {REG_READ_WRITE, "0x08", "BQ7_N0_BYT1[7:0]", "0x7F"},
         {REG_READ_WRITE, "0x09", "BQ7_N0_BYT2[7:0]", "0xFF"},
         {REG_READ_WRITE, "0x0A", "BQ7_N0_BYT3[7:0]", "0xFF"},

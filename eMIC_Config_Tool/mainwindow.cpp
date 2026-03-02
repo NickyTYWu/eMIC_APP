@@ -629,6 +629,14 @@ void MainWindow::enableFWLog(uint8_t bEnable)
     GenCommand(0xf0,data,1);
 }
 
+void MainWindow::enableWatchdog(uint8_t bEnable)
+{
+    qDebug() << "[MainWindow]enableWatchdog()";
+    uint8_t data[1];
+    data[0]=bEnable;
+    GenCommand(0xf1,data,1);
+}
+
 void MainWindow::refreshNote()
 {
     qDebug() << "[MainWindow]refreshNote()";
@@ -716,6 +724,13 @@ void MainWindow::syncDeviceData()
         page3RefreshBtn_clicked();
         page4RefreshBtn_clicked();
     }
+
+    WATCHDOG = settings.value("WATCHDOG/Enable", "0").toInt();
+
+    if(WATCHDOG>1)
+        WATCHDOG=0;
+
+    enableWatchdog(WATCHDOG);
 }
 
 void MainWindow::uartChannelChange(int index)
@@ -733,6 +748,8 @@ void MainWindow::comPortConnect()
     ui->disconnectBtn->setEnabled(true);
     ui->upgradeBtn->setEnabled(true);
     ui->connectBtn->setEnabled(false);
+    mSerial->clear(QSerialPort::AllDirections);
+    mSerial->readAll();
     mSerial->flush();
 
     syncDeviceData();
@@ -765,6 +782,12 @@ void MainWindow::upgradeBtn_clicked()
     qDebug() << "[MainWindow]upgradeBtn_clicked()";
     if(!IsConnect)
         return;
+
+    if(devID!=DEV_ID_NUMBER)
+    {
+        QMessageBox::information(NULL, "MessageBox", "not eMic device!!");
+        return;
+    }
 
     if(imageVersion.contains("file error"))
     {
@@ -3738,6 +3761,12 @@ uint8_t MainWindow::HandlePacket()
                         qDebug() <<"[MainWindow]Enter Upgrade mode Fail!!";
                         QMessageBox::information(NULL, "MessageBox", "Upgrade Init Fail!!");
                         bUpgrade=false;
+                        ui->upgradeBtn->setEnabled(true);
+                        ui->tabWidget->setTabEnabled(0,true);
+                        ui->tabWidget->setTabEnabled(1,true);
+                        ui->tabWidget->setTabEnabled(2,true);
+                        ui->tabWidget->setTabEnabled(3,true);
+                        ui->tabWidget->setTabEnabled(4,true);
                     }
                     else
                     {
@@ -3764,6 +3793,12 @@ uint8_t MainWindow::HandlePacket()
                         qDebug() <<"[MainWindow]Enter Upgrade mode Fail!!";
                         QMessageBox::information(NULL, "MessageBox", "Enter Upgrade mode Fail!!");
                         bUpgrade=false;
+                        ui->upgradeBtn->setEnabled(true);
+                        ui->tabWidget->setTabEnabled(0,true);
+                        ui->tabWidget->setTabEnabled(1,true);
+                        ui->tabWidget->setTabEnabled(2,true);
+                        ui->tabWidget->setTabEnabled(3,true);
+                        ui->tabWidget->setTabEnabled(4,true);
                     }
                     else
                     {
@@ -3783,6 +3818,12 @@ uint8_t MainWindow::HandlePacket()
                         qDebug() <<"[MainWindow]Upgrade Fail!!";
                         QMessageBox::information(NULL, "MessageBox", "Upgrade Fail1!!");
                         bUpgrade=false;
+                        ui->upgradeBtn->setEnabled(true);
+                        ui->tabWidget->setTabEnabled(0,true);
+                        ui->tabWidget->setTabEnabled(1,true);
+                        ui->tabWidget->setTabEnabled(2,true);
+                        ui->tabWidget->setTabEnabled(3,true);
+                        ui->tabWidget->setTabEnabled(4,true);
                     }
                     else
                     {
@@ -3961,11 +4002,28 @@ uint8_t MainWindow::HandlePacket()
                         bSend0xB0CommandAfterReset=false;
                         GenCommand(0xB0, NULL, 0);
                     }
-                }
 
+                    if(bReSyncAfterReset)
+                    {
+                       bReSyncAfterReset=false;
+                       bReSyncDataWhenDeviceOnLine=true;
+
+                    }
+                }
+                else if (CMD_Buffer[CMDDATA] == 0xF1)
+                {
+                    if (CMD_Buffer[CMDDATA + 1] == CMD_SUCCESS)
+                    {
+                        bReSyncAfterReset=true;
+                        GenCommand(0xAA, NULL, 0);
+                        //qDebug() <<"[MainWindow]Watchdog flage change!!";
+                        QMessageBox::information(NULL, "MessageBox", "Watchdog flag change reset device!!");
+                    }
+                }
             break;
             case GET_FW_VERSION_RESPONSE_CMD:
             {
+                devID=0xff;
                 if(CMD_Buffer[CMDDATA]==0xff)
                 {
                     version=CMD_Buffer[CMDDATA+1];
@@ -3975,6 +4033,14 @@ uint8_t MainWindow::HandlePacket()
                 {
                     version=CMD_Buffer[CMDDATA]<<8|CMD_Buffer[CMDDATA+1];
                     ui->fwVerionLabel->setText("Device FW Version:R"+QString::asprintf("%02d",version));
+                }
+                if(CMD_Buffer[PAYLOADLEN]<4)
+                {
+                    devID=0x01;
+                }
+                else
+                {
+                    devID=CMD_Buffer[CMDDATA+2];
                 }
                 qDebug() <<"[MainWindow]GET_FW_VERSION_RESPONSE_CMD Version::"<<version;
             }
@@ -4155,7 +4221,7 @@ uint8_t MainWindow::HandlePacket()
                 }
                 else if (CMD_Buffer[CMDDATA] == 0x02)
                 {
-                    uint8_t Buffer[8];
+                    uint8_t Buffer[9];
 
                     Buffer[0] = (FileSize & 0xFF000000) >> 24;
                     Buffer[1] = (FileSize & 0x00FF0000) >> 16;
@@ -4167,7 +4233,21 @@ uint8_t MainWindow::HandlePacket()
                     Buffer[6] = ((APP_StartAddress + flash_base_address) & 0x0000FF00) >> 8;
                     Buffer[7] = ((APP_StartAddress + flash_base_address) & 0x000000FF);
 
-                    GenCommand(OTA_UPGRADE_INIT_CMD, Buffer, 8);
+                    Buffer[8] = DEV_ID_NUMBER;
+
+                    GenCommand(OTA_UPGRADE_INIT_CMD, Buffer, 9);
+                }
+                else
+                {
+                    qDebug() <<"[MainWindow]Invalid device!!";
+                    QMessageBox::information(NULL, "MessageBox", "Invalid device!!");
+                    bUpgrade=false;
+                    ui->upgradeBtn->setEnabled(true);
+                    ui->tabWidget->setTabEnabled(0,true);
+                    ui->tabWidget->setTabEnabled(1,true);
+                    ui->tabWidget->setTabEnabled(2,true);
+                    ui->tabWidget->setTabEnabled(3,true);
+                    ui->tabWidget->setTabEnabled(4,true);
                 }
 
                 break;
@@ -4230,7 +4310,6 @@ uint8_t MainWindow::PreparePacketToParse()
 
     while (IsBufferHasData())
     {
-
         CMD_Buffer[CMD_INDEX] = ReadReceivePacket();
         //qDebug() <<"%x"<<CMD_Buffer[CMD_INDEX];
         if (CMD_Buffer[STARTBYTE] == hBYTE)
@@ -4247,10 +4326,20 @@ uint8_t MainWindow::PreparePacketToParse()
             {
                 CMD_INDEX = 0;
                 result = CMD_SUCCESS;
+                //qDebug()<<"cmd success";
                 return result;
             }
 
             CMD_INDEX += 1;
+
+        }
+        else
+        {
+            if(CMD_INDEX!=0)
+            {
+                CMD_INDEX=0;
+                memset(CMD_Buffer, 0x00, 256);
+            }
 
         }
 

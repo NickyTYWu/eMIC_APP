@@ -119,6 +119,7 @@ private:
     uint8_t needAutoRefreshWhenConnect;
     uint8_t autoRefreshSource;
     uint8_t FW_Debug_Msg;
+    uint8_t WATCHDOG;
     CheckWorkerThread* workerThread = nullptr;
 
     void updateUartChannel(int index);
@@ -150,8 +151,10 @@ private:
     short range;
     uint32_t imagesize;
     uint16_t version;
+    uint8_t devID;
     QString imageVersion;
     bool bSend0xB0CommandAfterReset;
+    bool bReSyncAfterReset;
     bool bCheckDeviceOffLine;
     bool bReSyncDataWhenDeviceOnLine;
 
@@ -238,6 +241,7 @@ private:
     void refreshNote();
     void refreshPage(uint8_t pageID,uint8_t readFrom);
     void enableFWLog(uint8_t bEnable);
+    void enableWatchdog(uint8_t bEnable);
 
     void deletePage();
     void DrawPageComponent(const QString& filename, int memberIndex);

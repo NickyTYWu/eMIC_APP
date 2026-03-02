@@ -20,6 +20,8 @@ extern "C" {
 #define PAGE3_REG_MAX_SIZE 121
 #define PAGE4_REG_MAX_SIZE 77
 
+#define DEV_ID_NUMBER 0x01
+
 #define hBYTE 0x55
 #define flash_base_address 0x08000000
 #define Bootloader1_StartAddress 0x00000000
