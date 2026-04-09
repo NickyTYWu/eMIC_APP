@@ -15,7 +15,8 @@
 #include <QJsonArray>
 #include "LogManager.h"
 #include "LogLevel.h"
-
+#include <qtimer.h>
+#include "SleepGuard.h"
 
 //#define PID 0xDD
 //#define VID 0x4D8
@@ -58,12 +59,29 @@ MainWindow::MainWindow(QWidget *parent)
     if(autoRefreshSource>1)
         autoRefreshSource=1;
 
+    sht4xCommandIndex=settings.value("SHT4x/CommandType", "0").toInt();
+    readoutInterval=settings.value("SHT4x/Readout_Interval", "1").toInt();
+    sht4xEnable=settings.value("SHT4x/SHT4x_Enable", "1").toInt();
+    sht4xEnableLog=settings.value("SHT4x/SHT4x_Enable_Log", "1").toInt();
+    heatingProtectionTemperature=settings.value("SHT4x/Heating_protection_temperature", "65.0").toFloat();
+    sht4xLogType=settings.value("SHT4x/SHT4x_Base_TEMP_And_Heating_TEMP_Log_Separate", "0").toFloat();
+    enableCal=settings.value("SHT4x/Enable_CAL", "0").toFloat();
+
     clearBtn= nullptr;
     infoNoteEdit= nullptr;
     getTimeBtn= nullptr;
     writeConfig= nullptr;
     comboBox = nullptr;
     slider = nullptr;
+    baseTemp= nullptr;
+    baseHumidity= nullptr;
+    heatingTemp= nullptr;
+    heatingHumidity= nullptr;
+    tempCalLineEdit= nullptr;
+    humidityCalLineEdit= nullptr;
+    saveCalBtn= nullptr;
+    readCalBtn= nullptr;
+
     for(int i=0;i<8;i++)
     {
         GroupBox[i] = nullptr;
@@ -98,7 +116,8 @@ MainWindow::MainWindow(QWidget *parent)
     bUpgrade=false;
     comPortDisconnect();
 
-
+    tempCal=0;
+    humidityCal=0;
 
     initInfoRadioButton();
     initPage0();
@@ -242,17 +261,148 @@ MainWindow::MainWindow(QWidget *parent)
     connect(workerThread, &CheckWorkerThread::checkFunctionCalled, this, &MainWindow::onCheckFunctionCalled);
     connect(workerThread, &CheckWorkerThread::workFinished, this, &MainWindow::onWorkFinished);
 
+    readOutIntervalCount=0;
     updateSerialPorts();
 
     workerThread->start();
     mSerialScanTimer.start();
 
+    timer = new QTimer(this);
+
+    timer->setTimerType(Qt::PreciseTimer);   // 高精度
+    timer->setInterval(100);                  // 10 ms
+
+    connect(timer, &QTimer::timeout, this, &MainWindow::onTimer);
+
+    //timer->start();
+
+    mCheckOfflineTimer.start();
+    bSingleRead=false;
+
     ui->tableWidget_page4->setCurrentCell(1,0);
     ui->tableWidget_page3->setCurrentCell(1,0);
     ui->tableWidget_page2->setCurrentCell(1,0);
     ui->tableWidget_page0->setCurrentCell(1,0);
+
+    SleepGuard *sleepGuard = new SleepGuard(this);
+    sleepGuard->preventSleep();
+
+    bCheckCMDSend=false;
+    bWaitReadOutResponse=false;
 }
 
+void MainWindow::setReconnectFlag()
+{
+    reConnectSync=true;
+    reConnectSyncCount=0;
+    bDisconnect=false;
+}
+
+void MainWindow::resetCheckDisconnectFlag()
+{
+    //qDebug() << "[MainWindow]resetCheckDisconnectFlag";
+    bCheckCMDSend=false;
+    waitCMDResponseCount=0;
+    SendCommandInterval=0;
+    if(bDisconnect)
+    {
+        setReconnectFlag();
+    }
+
+}
+
+void MainWindow::checkDisconnect()
+{
+    if(!IsConnect)
+        return;
+
+    if(reConnectSync)
+    {
+        reConnectSyncCount++;
+        if(reConnectSyncCount>=2)
+        {
+            qDebug() << "[MainWindow]==========reSync==========";
+            reConnectSync=false;
+            reConnectSyncCount=0;
+            syncDeviceData();
+        }
+        return;
+    }
+
+    SendCommandInterval++;
+    if(SendCommandInterval>=10)
+    {
+        //qDebug() << "[MainWindow]checkDisconnect Send CMD";
+        GenCommand(GET_FW_VERSION_CMD, NULL, 0);
+        if(!bCheckCMDSend)
+        {
+            bCheckCMDSend=true;
+            waitCMDResponseCount=0;
+            SendCommandInterval=0;
+        }
+    }
+
+    if(bCheckCMDSend)
+    {
+        if(!bDisconnect)
+        {
+            waitCMDResponseCount++;
+            if(waitCMDResponseCount>=12)
+            {
+                //qDebug() << "[MainWindow]disconnect";
+                bCheckCMDSend=false;
+                waitCMDResponseCount=0;
+                reConnectSync=false;
+                bDisconnect=true;
+                ui->temperatureLabel->setText("Temperature:");
+                ui->humidtyLabel->setText("Humidty:");
+                ui->deviceIDlabel->setText("Device ID:");
+            }
+        }
+    }
+}
+
+void MainWindow::onTimer()
+{
+    if(!bUpgrade)
+    {
+        //QString logTime = QDateTime::currentDateTime().toString("hh:mm:ss.zzz 'ms'");
+        //qDebug() << "[MainWindow]TIM:" << logTime;
+
+        checkDisconnect();
+
+        if(sht4xEnable)
+        {
+
+            readOutIntervalCount++;
+            if(readOutIntervalCount>=readoutInterval*10)
+            {
+
+                if(!bWaitReadOutResponse)
+                {
+                    readOutSHT4x();
+                    bWaitReadOutResponse=true;
+                    readOutIntervalCount=0;
+                    waitReadOutResponseCount=0;
+                }
+                else
+                {
+                    waitReadOutResponseCount++;
+                    if(waitReadOutResponseCount>=8)
+                    {
+                        bWaitReadOutResponse=false;
+                        waitReadOutResponseCount=0;
+                    }
+
+                }
+            }
+
+        }
+
+    }
+
+
+}
 void MainWindow::initInfoRadioButton()
 {
     qDebug() << "[MainWindow]initInfoRadioButton";
@@ -263,7 +413,7 @@ void MainWindow::initInfoRadioButton()
     infoGroupBox = new QGroupBox(tabPage);
     infoGroupBox->setStyleSheet(QStringLiteral("QGroupBox{border:1px solid white;font-weight: bold;font-size: 10pt;border-radius:5px;margin-top: 1ex;} QGroupBox::title{subcontrol-origin: margin;subcontrol-position:top left;padding:0.3px;}"));
 
-    for(int i=0;i<4;i++)
+    for(int i=0;i<5;i++)
     {
         infoRadioButton[i]= new QRadioButton(tabPage);
         infoRadioButton[i]->setStyleSheet(R"(
@@ -305,6 +455,11 @@ void MainWindow::initInfoRadioButton()
     infoRadioButton[3]->setText("Edit HUB Info");
     infoRadioButton[3]->show();
 
+    infoRadioButton[4]->setGeometry(40,180,240,20);
+    infoRadioButton[4]->setText("SHT4x setting");
+    //infoRadioButton[4]->setEnabled(false);
+    infoRadioButton[4]->show();
+
     //infoRadioButton[4]->setGeometry(40,180,240,20);
     //infoRadioButton[4]->setText("Show Reference Frequency Response");
     //infoRadioButton[4]->setEnabled(false);
@@ -316,7 +471,7 @@ void MainWindow::initInfoRadioButton()
     //infoRadioButton[5]->show();
 
 
-    for(int i=0;i<4;i++)
+    for(int i=0;i<5;i++)
     {
         infoBtnGrup->addButton(infoRadioButton[i]);
         infoBtnGrup->setId(infoRadioButton[i],i);
@@ -706,7 +861,21 @@ void MainWindow::syncDeviceData()
         return;
 
     GenCommand(GET_FW_VERSION_CMD, NULL, 0);
-    GenCommand(GET_TH_CMD, NULL, 0);
+    if(enableCal)
+        GenCommand(READ_SHT4X_CAL_CMD,NULL,0);
+    GenCommand(GET_SHT4X_SERIAL_NUM_CMD, NULL, 0);
+
+    if(!timer->isActive())
+    {
+        if(sht4xEnable)
+        {
+            readOutSHT4x();
+            readOutIntervalCount=0;
+            bWaitReadOutResponse=false;
+            waitReadOutResponseCount=0;
+        }
+        timer->start();
+    }
     refreshInfo();
     refreshNote();
 
@@ -1436,6 +1605,59 @@ void MainWindow::infoRadiobtnGroup1clicked(QAbstractButton *button)
 
 }
 
+void MainWindow::sht4xIntervalSlelectChange(int index)
+{
+    qDebug() << "[MainWindow]sht4xCommandSlelectChange() index:"<<index;
+
+
+    readoutInterval=infoSHT4xComboBox[1]->currentIndex()+1;
+
+    QSettings settings("AppConfig.ini", QSettings::IniFormat);
+    settings.setValue("SHT4x/Readout_Interval",readoutInterval);
+
+    if(sht4xEnable)
+    {
+        readOutSHT4x();
+        readOutIntervalCount=0;
+        bWaitReadOutResponse=false;
+        waitReadOutResponseCount=0;
+    }
+
+}
+
+
+void MainWindow::sht4xCommandSlelectChange(int index)
+{
+    qDebug() << "[MainWindow]sht4xCommandSlelectChange() index:"<<index;
+
+    sht4xCommandIndex=infoSHT4xComboBox[0]->currentIndex();
+
+    if(sht4xCommandIndex<2)
+    {
+        if(heatingTemp)
+        {
+            heatingTemp->setText("Heating Temp: 0");
+        }
+
+        if(heatingHumidity)
+        {
+            heatingHumidity->setText("Hearting Humidity: 0");
+
+        }
+    }
+
+    QSettings settings("AppConfig.ini", QSettings::IniFormat);
+    settings.setValue("SHT4x/CommandType",sht4xCommandIndex);
+
+    if(sht4xEnable)
+    {
+        readOutSHT4x();
+        readOutIntervalCount=0;
+        bWaitReadOutResponse=false;
+        waitReadOutResponseCount=0;
+    }
+}
+
 void MainWindow::regSlelectChange(int index)
 {
     qDebug() << "[MainWindow]regSlelectChange() index:"<<index;
@@ -1692,6 +1914,103 @@ void MainWindow::deletePage()
         delete getTimeBtn;
         getTimeBtn = nullptr;
     }
+
+    if(singleReadSHT4xBtn)
+    {
+        disconnect(singleReadSHT4xBtn,SIGNAL(clicked()),0,0);
+        delete singleReadSHT4xBtn;
+        singleReadSHT4xBtn = nullptr;
+    }
+
+    if(setSHT4xSoftrestBtn)
+    {
+        disconnect(setSHT4xSoftrestBtn,SIGNAL(clicked()),0,0);
+        delete setSHT4xSoftrestBtn;
+        setSHT4xSoftrestBtn = nullptr;
+    }
+
+    if(readSHT4xSerialNumberBtn)
+    {
+        disconnect(readSHT4xSerialNumberBtn,SIGNAL(clicked()),0,0);
+        delete readSHT4xSerialNumberBtn;
+        readSHT4xSerialNumberBtn = nullptr;
+    }
+
+    if(tempCalLineEdit)
+    {
+        delete tempCalLineEdit;
+        tempCalLineEdit= nullptr;
+    }
+
+    if(humidityCalLineEdit)
+    {
+        delete humidityCalLineEdit;
+        humidityCalLineEdit= nullptr;
+    }
+
+    if(saveCalBtn)
+    {
+        disconnect(saveCalBtn,SIGNAL(clicked()),0,0);
+        delete saveCalBtn;
+        saveCalBtn = nullptr;
+    }
+
+    if(readCalBtn)
+    {
+        disconnect(readCalBtn,SIGNAL(clicked()),0,0);
+        delete readCalBtn;
+        readCalBtn = nullptr;
+    }
+
+    if(startCheckBox)
+    {
+        disconnect(startCheckBox,&QCheckBox::checkStateChanged,0,0);
+        delete startCheckBox;
+        startCheckBox = nullptr;
+    }
+
+    if(enableLogCheckBox)
+    {
+        disconnect(enableLogCheckBox,&QCheckBox::checkStateChanged,0,0);
+        delete enableLogCheckBox;
+        enableLogCheckBox = nullptr;
+    }
+
+    if(baseTemp)
+    {
+        delete baseTemp;
+        baseTemp= nullptr;
+    }
+
+    if(baseHumidity)
+    {
+        delete baseHumidity;
+        baseHumidity= nullptr;
+    }
+
+    if(heatingTemp)
+    {
+        delete heatingTemp;
+        heatingTemp= nullptr;
+    }
+
+    if(heatingHumidity)
+    {
+        delete heatingHumidity;
+        heatingHumidity= nullptr;
+    }
+
+    for(int i=0;i<2;i++)
+    {
+        if(infoSHT4xComboBox[i])
+        {
+            disconnect(infoSHT4xComboBox[i],SIGNAL(currentIndexChanged(int)),0,0);
+            delete infoSHT4xComboBox[i];
+            infoSHT4xComboBox[i] = nullptr;
+        }
+    }
+
+
 
     if(comboBox)
     {
@@ -2459,6 +2778,113 @@ void MainWindow::recordWriteHubInfo()
 }
 
 
+void MainWindow::rotateSHT4xSeparateCheckRecordFileIfNeeded() {
+
+    QString today = QDate::currentDate().toString("yyyy-MM-dd");
+    QString serial= "0x"+QString("%1").arg(sht4xSerialNumber, 4, 16, QLatin1Char('0')).toUpper();
+    bool fileExists;
+    if (today == sht4x_m_curDate && sht4x_m_file.isOpen()) return;
+    sht4x_m_curDate = today;
+    QDir().mkpath(sht4x_m_logDir);
+    if (sht4x_m_file.isOpen()) sht4x_m_file.close();
+    QString fn = QString("%1/sht4x_separate_check_log_%2_%3.%4").arg(sht4x_m_logDir,serial, sht4x_m_curDate, "csv");
+    sht4x_m_file.setFileName(fn);
+    fileExists=sht4x_m_file.exists();
+    sht4x_m_file.open(QIODevice::Append | QIODevice::Text);
+
+    if(!fileExists)
+    {
+        QTextStream out(&sht4x_m_file);
+        // 寫入表頭
+        out << "serial number,type of readout,timestamp,temperature, humidity\n";
+    }
+}
+
+void MainWindow::rotateSHT4xRecordFileIfNeeded() {
+
+    QString today = QDate::currentDate().toString("yyyy-MM-dd");
+    QString serial= "0x"+QString("%1").arg(sht4xSerialNumber, 4, 16, QLatin1Char('0')).toUpper();
+    bool fileExists;
+    if (today == sht4x_m_curDate && sht4x_m_file.isOpen()) return;
+    sht4x_m_curDate = today;
+    QDir().mkpath(sht4x_m_logDir);
+    if (sht4x_m_file.isOpen()) sht4x_m_file.close();
+    QString fn = QString("%1/sht4x_log_%2_%3.%4").arg(sht4x_m_logDir,serial, sht4x_m_curDate, "csv");
+    sht4x_m_file.setFileName(fn);
+    fileExists=sht4x_m_file.exists();
+    sht4x_m_file.open(QIODevice::Append | QIODevice::Text);
+
+    if(!fileExists)
+    {
+        QTextStream out(&sht4x_m_file);
+        // 寫入表頭
+        out << "serial number,type of readout,timestamp,temperature, humidity\n";
+    }
+}
+
+void MainWindow::recordSHT4x(int type)
+{
+
+    if(sht4xEnableLog==0)
+        return;
+
+    rotateSHT4xRecordFileIfNeeded();
+
+    QString serial,cmdType,logTime,t,H;
+
+    if(type==0)
+    {
+        serial= "0x"+QString("%1").arg(sht4xSerialNumber, 4, 16, QLatin1Char('0')).toUpper();
+        cmdType= "0x"+QString("%1").arg(getSHT4xCMD(sht4xCommandIndex), 2, 16, QLatin1Char('0')).toUpper();
+        logTime = QDateTime::currentDateTime().toString("hh:mm:ss.zzz 'ms'");
+        t=QLocale().toString(temp/1000.0);
+        H=QLocale().toString(humidity/1000.0);
+    }
+    else if(type==1)
+    {
+        serial= "0x"+QString("%1").arg(sht4xSerialNumber, 4, 16, QLatin1Char('0')).toUpper();
+        cmdType ="0x94";
+        logTime = QDateTime::currentDateTime().toString("hh:mm:ss.zzz 'ms'");
+        t="";
+        H="";
+    }
+
+    QTextStream out(&sht4x_m_file);
+
+
+    out << QString("\"%1\",\"%2\",\"%3\",\"%4\",\"%5\"\n").arg(serial, cmdType, logTime,t,H);
+
+    sht4x_m_file.close();
+}
+
+void MainWindow::recordSHT4xNotify()
+{
+
+    if(sht4xEnableLog==0)
+        return;
+
+    if(sht4xLogType==1)
+        rotateSHT4xSeparateCheckRecordFileIfNeeded();
+    else
+        rotateSHT4xRecordFileIfNeeded();
+
+    QString serial,cmdType,logTime,t,H;
+
+
+    serial= "0x"+QString("%1").arg(sht4xSerialNumber, 4, 16, QLatin1Char('0')).toUpper();
+    cmdType= "0xFD";
+    logTime = QDateTime::currentDateTime().toString("hh:mm:ss.zzz 'ms'");
+    t=QLocale().toString(notifyTemp/1000.0);
+    H=QLocale().toString(notifyHumidity/1000.0);
+
+    QTextStream out(&sht4x_m_file);
+
+
+    out << QString("\"%1\",\"%2\",\"%3\",\"%4\",\"%5\"\n").arg(serial, cmdType, logTime,t,H);
+
+    sht4x_m_file.close();
+}
+
 void MainWindow::writeConfig_clicked()
 {
     uint8_t pageBuf[140];
@@ -2641,6 +3067,185 @@ void MainWindow::writeConfig_clicked()
             QMessageBox::information(NULL, "MessageBox", "Write Fail!!");
         }
     }
+}
+
+uint8_t MainWindow::getSHT4xCMD(int index)
+{
+    uint8_t cmd=0xFD;
+    if(index!=-1)
+    {
+        if(index==0)
+        {
+            cmd=0xFD;
+        }
+        else if(index==1)
+        {
+            cmd=0xF6;
+        }
+        else if(index==2)
+        {
+            cmd=0xE0;
+        }
+        else if(index==3)
+        {
+            cmd=0x39;
+        }
+        else if(index==4)
+        {
+            cmd=0x32;
+        }
+        else if(index==5)
+        {
+            cmd=0x2F;
+        }
+        else if(index==6)
+        {
+            cmd=0x24;
+        }
+        else if(index==7)
+        {
+            cmd=0x1E;
+        }
+        else if(index==8)
+        {
+            cmd=0x15;
+        }
+
+    }
+
+    return cmd;
+}
+
+
+void MainWindow::onLogStateChanged(Qt::CheckState state)
+{
+    if(state == Qt::Checked)
+    {
+        qDebug() << "onLogStateChanged Checked";
+
+        sht4xEnableLog = 1;
+        QSettings settings("AppConfig.ini", QSettings::IniFormat);
+        settings.setValue("SHT4x/SHT4x_Enable_Log",sht4xEnableLog);
+
+
+    }
+    else
+    {
+        qDebug() << "onLogStateChanged Unchecked";
+
+        sht4xEnableLog = 0;
+        QSettings settings("AppConfig.ini", QSettings::IniFormat);
+        settings.setValue("SHT4x/SHT4x_Enable_Log",sht4xEnableLog);
+
+    }
+}
+
+void MainWindow::onStateChanged(Qt::CheckState state)
+{
+    if(state == Qt::Checked)
+    {
+        qDebug() << "onStateChanged Checked";
+
+        //sht4xCommandIndex=infoSHT4xComboBox[0]->currentIndex();
+        //readoutInterval=infoSHT4xComboBox[1]->currentIndex()+1;
+        if(sht4xEnable!=1)
+        {
+            sht4xEnable = 1;
+
+            QSettings settings("AppConfig.ini", QSettings::IniFormat);
+            //settings.setValue("SHT4x/CommandType",sht4xCommandIndex);
+            //settings.setValue("SHT4x/Readout_Interval",readoutInterval);
+            settings.setValue("SHT4x/SHT4x_Enable",sht4xEnable);
+
+            if(sht4xEnable)
+            {
+                readOutSHT4x();
+                readOutIntervalCount=0;
+                bWaitReadOutResponse=false;
+                waitReadOutResponseCount=0;
+            }
+        }
+
+
+        singleReadSHT4xBtn->setDisabled(true);
+        bSingleRead=false;
+
+    }
+    else
+    {
+        qDebug() << "onStateChanged Unchecked";
+
+        sht4xEnable = 0;
+
+        QSettings settings("AppConfig.ini", QSettings::IniFormat);
+        settings.setValue("SHT4x/SHT4x_Enable",sht4xEnable);
+
+        //infoSHT4xComboBox[0]->setDisabled(false);
+        //infoSHT4xComboBox[1]->setDisabled(false);
+        singleReadSHT4xBtn->setDisabled(false);
+        //timer->stop();
+        ui->temperatureLabel->setText("Temperature:");
+        ui->humidtyLabel->setText("Humidty:");
+
+    }
+}
+
+void MainWindow::readOutSHT4x()
+{
+
+    uint8_t CMD[1];
+
+    if(!bUpgrade)
+    {
+        CMD[0]=getSHT4xCMD(sht4xCommandIndex);
+
+        GenCommand(GET_TH_CMD,CMD,1);
+    }
+}
+
+void MainWindow::readSHT4xSerialNumberBtn_clicked()
+{
+    qDebug() << "[MainWindow]readSHT4xSerialNumberBtn_clicked";
+    GenCommand(GET_SHT4X_SERIAL_NUM_CMD, NULL, 0);
+}
+
+void MainWindow::setSHT4xSoftrestBtn_clicked()
+{
+    qDebug() << "[MainWindow]setSHT4xSoftrestBtn_clicked";
+    GenCommand(SHT4X_SOFT_RESET_CMD, NULL, 0);
+}
+
+void MainWindow::singleReadSHT4xBtn_clicked()
+{
+    qDebug() << "[MainWindow]singleReadSHT4xLogBtn_clicked";
+    bSingleRead=true;
+    readOutSHT4x();
+}
+
+
+void MainWindow::saveCalBtn_clicked()
+{
+    qDebug() << "[MainWindow]saveCalBtn_clicked";
+    uint8_t CMD[8];
+
+    tempCal= tempCalLineEdit->text().trimmed().toFloat();
+    humidityCal= humidityCalLineEdit->text().trimmed().toFloat();
+
+    qDebug() << "[MainWindow]tempCal:"<<tempCal;
+
+    qDebug() << "[MainWindow]humidityCal:"<<humidityCal;
+
+    memcpy(&CMD[0],&tempCal,sizeof(float));
+    memcpy(&CMD[4],&humidityCal,sizeof(float));
+
+    GenCommand(WRITE_SHT4X_CAL_CMD,CMD,8);
+}
+
+void MainWindow::readCalBtn_clicked()
+{
+    qDebug() << "[MainWindow]readCalBtn_clicked";
+
+    GenCommand(READ_SHT4X_CAL_CMD,NULL,0);
 }
 
 void MainWindow::getTimeBtn_clicked()
@@ -3359,6 +3964,412 @@ void MainWindow::createEditHubInfo()
     connect(writeConfig,SIGNAL(clicked()),this,SLOT(writeConfig_clicked()));
 }
 
+void MainWindow::createSHT4xSetting()
+{
+    qDebug() << "[MainWindow]createSHT4xSetting";
+
+    deletePage();
+
+    int offsetIndex=1;
+
+    QDoubleValidator* validator = new QDoubleValidator(this);
+    validator->setNotation(QDoubleValidator::StandardNotation);  // 禁用科學記號（如1e10）
+    validator->setDecimals(2);  // 最多允許 4 位小數
+    validator->setRange(-999999, 999999);  // 設定可接受的範圍（也可不設）
+
+
+    //QSettings settings("AppConfig.ini", QSettings::IniFormat);
+    //sht4xCommandIndex=settings.value("SHT4x/CommandType", "0").toInt();
+    for(int i=0;i<6;i++)
+    {
+        GroupBox[i] = new QGroupBox(this);
+        GroupBox[i]->setStyleSheet(QStringLiteral("QGroupBox{border:1px solid white;font-weight: bold;font-size: 10pt;border-radius:5px;margin-top: 1ex;} QGroupBox::title{subcontrol-origin: margin;subcontrol-position:top left;padding:0.3px;}"));
+    }
+
+    for(int i=0;i<6;i++)
+        descriptionLabel[i] = new QLabel(this);
+
+   baseTemp= new QLabel(this);
+   baseHumidity= new QLabel(this);
+   heatingTemp= new QLabel(this);
+   heatingHumidity= new QLabel(this);
+
+
+    GroupBox[4]->setGeometry(450,100,320,140);
+    GroupBox[4]->setTitle("readout");
+    GroupBox[4]->show();
+
+    baseTemp->setGeometry(460,145,140,20);
+    if(sht4xCommandIndex>2)
+        baseTemp->setText("Base Temp:       "+QLocale().toString(notifyTemp/1000.0));
+    else
+        baseTemp->setText("Base Temp:       "+QLocale().toString(temp/1000.0));
+
+    baseTemp->show();
+
+
+    baseHumidity->setGeometry(600,145,160,20);
+    if(sht4xCommandIndex>2)
+        baseHumidity->setText("Base Humidity:         "+QLocale().toString(notifyHumidity/1000.0));
+    else
+        baseHumidity->setText("Base Humidity:         "+QLocale().toString(humidity/1000.0));
+    baseHumidity->show();
+
+
+    heatingTemp->setGeometry(460,180,140,20);
+    if(sht4xCommandIndex>2)
+        heatingTemp->setText("Heating Temp: "+QLocale().toString(temp/1000.0));
+    else
+        heatingTemp->setText("Heating Temp: 0");
+    heatingTemp->show();
+
+
+    heatingHumidity->setGeometry(600,180,160,20);
+    if(sht4xCommandIndex>2)
+        heatingHumidity->setText("Hearting Humidity: "+QLocale().toString(humidity/1000.0));
+    else
+        heatingHumidity->setText("Hearting Humidity: 0");
+    heatingHumidity->show();
+
+    GroupBox[0]->setGeometry(450,250,320,180);
+    GroupBox[0]->setTitle("param setting");
+    GroupBox[0]->show();
+
+    descriptionLabel[0]->setGeometry(460,285,120,20);
+    descriptionLabel[0]->setText("Command:");
+    descriptionLabel[0]->show();
+
+    infoSHT4xComboBox[0] = new QComboBox(this);
+    infoSHT4xComboBox[0]->setStyleSheet(
+        "QComboBox {"
+        "background-color: black;"
+
+        "}"
+
+        "QComboBox QAbstractItemView {"
+        "background:black;"
+        "color:white;"
+        "selection-background-color:#444;"
+        "}"
+
+
+        "QComboBox:disabled {"
+        "background-color: #E5ECF6;"
+        "color: #8A8A8A;"
+        "border:1px solid #C5CCD8;"
+        "}"
+        );
+
+
+    infoSHT4xComboBox[0]->addItem("0xFD high precision");
+    infoSHT4xComboBox[0]->addItem("0xF6  medium precision");
+    infoSHT4xComboBox[0]->addItem("0xE0  lowest precision");
+    infoSHT4xComboBox[0]->addItem("0x39  200mW for 1s");
+    infoSHT4xComboBox[0]->addItem("0x32  200mW for 0.1s");
+    infoSHT4xComboBox[0]->addItem("0x2F  110mW for 1s");
+    infoSHT4xComboBox[0]->addItem("0x24  110mW for 0.1s");
+    infoSHT4xComboBox[0]->addItem("0x1E  20mW for 1s");
+    infoSHT4xComboBox[0]->addItem("0x15  20mW for 0.1s");
+
+    infoSHT4xComboBox[0]->setCurrentIndex(sht4xCommandIndex);
+    infoSHT4xComboBox[0]->setGeometry(550,285,160,20);
+
+    infoSHT4xComboBox[0]->show();
+
+    connect(infoSHT4xComboBox[0],SIGNAL(currentIndexChanged(int)),this,SLOT(sht4xCommandSlelectChange(int)));
+
+
+
+    descriptionLabel[1]->setGeometry(460,315,120,20);
+    descriptionLabel[1]->setText("Time Interval:");
+    descriptionLabel[1]->show();
+
+    infoSHT4xComboBox[1] = new QComboBox(this);
+    infoSHT4xComboBox[1]->setStyleSheet(
+        "QComboBox {"
+        "background-color: black;"
+
+        "}"
+
+        "QComboBox QAbstractItemView {"
+        "background:black;"
+        "color:white;"
+        "selection-background-color:#444;"
+        "}"
+
+
+        "QComboBox:disabled {"
+        "background-color: #E5ECF6;"
+        "color: #8A8A8A;"
+        "border:1px solid #C5CCD8;"
+        "}"
+        );
+
+
+    for(int i=offsetIndex;i<61;i++)
+    {
+        infoSHT4xComboBox[1]->addItem(QLocale().toString(i));
+    }
+
+    infoSHT4xComboBox[1]->setGeometry(550,315,80,20);
+    infoSHT4xComboBox[1]->setCurrentIndex(readoutInterval-1);
+
+    infoSHT4xComboBox[1]->show();
+
+    connect(infoSHT4xComboBox[1],SIGNAL(currentIndexChanged(int)),this,SLOT(sht4xIntervalSlelectChange(int)));
+
+
+    singleReadSHT4xBtn = new QPushButton(this);
+
+    singleReadSHT4xBtn->setGeometry(548,355,88,27);
+    singleReadSHT4xBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #000000;
+            color: white;
+            border-radius: 6px;
+            padding: 6px 12px;
+        }
+        QPushButton:hover {
+        background-color: #AAAAAA;
+        }
+        QPushButton:pressed {
+            background-color: #333333;
+        }
+
+        QPushButton:disabled {
+        background-color: #E5ECF6;
+        color: #8A8A8A;
+
+        }
+    )");
+    singleReadSHT4xBtn->setText("Single read");
+    singleReadSHT4xBtn->show();
+    connect(singleReadSHT4xBtn,SIGNAL(clicked()),this,SLOT(singleReadSHT4xBtn_clicked()));
+
+    startCheckBox = new QCheckBox("Start",this);
+    startCheckBox->setGeometry(460,350,60,20);
+    startCheckBox->setStyleSheet(
+        "QCheckBox::indicator {"
+        "width:13px;"
+        "height:13px;"
+        "border:1px solid #888;"
+        "border-radius:3px;"
+        "background:white;"
+        "}"
+
+        "QCheckBox::indicator:checked {"
+        "background:#007AFF;"
+        "border:1px solid #007AFF;"
+        "}"
+
+        "QCheckBox::indicator:hover {"
+        "border:2px solid #007AFF;"
+        "}"
+
+        );
+
+
+
+    startCheckBox->show();
+
+    connect(startCheckBox, &QCheckBox::checkStateChanged,this, &MainWindow::onStateChanged);
+
+    if(sht4xEnable)
+    {
+        startCheckBox->setChecked(true);
+    }
+    else
+    {
+        startCheckBox->setChecked(false);
+    }
+
+
+    enableLogCheckBox= new QCheckBox("Enable log",this);
+    enableLogCheckBox->setGeometry(460,370,82,20);
+    enableLogCheckBox->setStyleSheet(
+        "QCheckBox::indicator {"
+        "width:13px;"
+        "height:13px;"
+        "border:1px solid #888;"
+        "border-radius:3px;"
+        "background:white;"
+        "}"
+
+        "QCheckBox::indicator:checked {"
+        "background:#007AFF;"
+        "border:1px solid #007AFF;"
+        "}"
+
+        "QCheckBox::indicator:hover {"
+        "border:2px solid #007AFF;"
+        "}"
+
+        );
+
+
+
+    enableLogCheckBox->show();
+
+    connect(enableLogCheckBox, &QCheckBox::checkStateChanged,this, &MainWindow::onLogStateChanged);
+
+    if(sht4xEnableLog)
+    {
+        enableLogCheckBox->setChecked(true);
+    }
+    else
+    {
+        enableLogCheckBox->setChecked(false);
+    }
+
+    GroupBox[2]->setGeometry(450,440,320,110/*450,340,300,110*/);
+    GroupBox[2]->setTitle("Serial Number");
+    GroupBox[2]->show();
+
+    descriptionLabel[2]->setGeometry(460,475,120,20);
+    descriptionLabel[2]->setText("Serial number:");
+    descriptionLabel[2]->show();
+
+    infoLineEdit[0] = new QLineEdit(this);
+    infoLineEdit[0]->setStyleSheet("QLineEdit { background-color: #000000; }");
+
+    infoLineEdit[0]->setGeometry(550,475,130,20);
+    infoLineEdit[0]->setMaxLength(10);
+    infoLineEdit[0]->setText("0x"+QString("%1").arg(sht4xSerialNumber, 8, 16, QLatin1Char('0')).toUpper());
+    //infoLineEdit[22]->setText("SN20250828AB0001");
+    infoLineEdit[0]->show();
+
+    readSHT4xSerialNumberBtn = new QPushButton(this);
+
+    readSHT4xSerialNumberBtn->setGeometry(705,525,60,20);
+    readSHT4xSerialNumberBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #000000;
+            color: white;
+            border-radius: 6px;
+            padding: 6px 12px;
+        }
+        QPushButton:hover {
+        background-color: #AAAAAA;
+        }
+        QPushButton:pressed {
+            background-color: #333333;
+        }
+    )");
+    readSHT4xSerialNumberBtn->setText("read");
+    readSHT4xSerialNumberBtn->show();
+    connect(readSHT4xSerialNumberBtn,SIGNAL(clicked()),this,SLOT(readSHT4xSerialNumberBtn_clicked()));
+
+    GroupBox[3]->setGeometry(450,560,320,110/*450,220,300,110*/);
+    GroupBox[3]->setTitle("soft rest");
+    GroupBox[3]->show();
+
+
+    setSHT4xSoftrestBtn = new QPushButton(this);
+
+    setSHT4xSoftrestBtn->setGeometry(520,600,180,30/*510,260,180,30*/);
+    setSHT4xSoftrestBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #000000;
+            color: white;
+            border-radius: 6px;
+            padding: 6px 12px;
+        }
+        QPushButton:hover {
+        background-color: #AAAAAA;
+        }
+        QPushButton:pressed {
+            background-color: #333333;
+        }
+    )");
+    setSHT4xSoftrestBtn->setText("Soft reset");
+    setSHT4xSoftrestBtn->show();
+    connect(setSHT4xSoftrestBtn,SIGNAL(clicked()),this,SLOT(setSHT4xSoftrestBtn_clicked()));
+
+    if(enableCal)
+    {
+        GroupBox[5]->setGeometry(780,100,320,140);
+        GroupBox[5]->setTitle("Cal");
+        GroupBox[5]->show();
+
+        descriptionLabel[3]->setGeometry(790,125,120,20);
+        descriptionLabel[3]->setText("Temp Cal:");
+        descriptionLabel[3]->show();
+
+        tempCalLineEdit = new QLineEdit(this);
+        tempCalLineEdit->setStyleSheet("QLineEdit { background-color: #000000; }");
+        tempCalLineEdit->setGeometry(870,125,80,20);
+        tempCalLineEdit->setValidator(validator);
+        tempCalLineEdit->setText(QString::number(tempCal,'f',2));
+        tempCalLineEdit->show();
+
+        descriptionLabel[4]->setGeometry(790,155,120,20);
+        descriptionLabel[4]->setText("Humidity Cal:");
+        descriptionLabel[4]->show();
+
+        humidityCalLineEdit = new QLineEdit(this);
+        humidityCalLineEdit->setStyleSheet("QLineEdit { background-color: #000000; }");
+        humidityCalLineEdit->setGeometry(870,155,80,20);
+        humidityCalLineEdit->setValidator(validator);
+        humidityCalLineEdit->setText(QString::number(humidityCal,'f',2));
+        humidityCalLineEdit->show();
+
+        readCalBtn = new QPushButton(this);
+
+        readCalBtn->setGeometry(790,200,70,20);
+        readCalBtn->setStyleSheet(R"(
+            QPushButton {
+                background-color: #000000;
+                color: white;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+            background-color: #AAAAAA;
+            }
+            QPushButton:pressed {
+                background-color: #333333;
+            }
+
+            QPushButton:disabled {
+            background-color: #E5ECF6;
+            color: #8A8A8A;
+
+            }
+        )");
+        readCalBtn->setText("Read");
+        readCalBtn->show();
+        connect(readCalBtn,SIGNAL(clicked()),this,SLOT(readCalBtn_clicked()));
+
+        saveCalBtn = new QPushButton(this);
+
+        saveCalBtn->setGeometry(870,200,70,20);
+        saveCalBtn->setStyleSheet(R"(
+            QPushButton {
+                background-color: #000000;
+                color: white;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+            background-color: #AAAAAA;
+            }
+            QPushButton:pressed {
+                background-color: #333333;
+            }
+
+            QPushButton:disabled {
+            background-color: #E5ECF6;
+            color: #8A8A8A;
+
+            }
+        )");
+        saveCalBtn->setText("Save");
+        saveCalBtn->show();
+        connect(saveCalBtn,SIGNAL(clicked()),this,SLOT(saveCalBtn_clicked()));
+    }
+
+}
+
 void MainWindow::createShowRefFreqResponse()
 {
     qDebug() << "[MainWindow]createShowRefFreqResponse";
@@ -3495,6 +4506,7 @@ void MainWindow::openFileBtn_clicked()
 
 void MainWindow::updateSerialPorts()
 {
+
     mSerialPorts = QSerialPortInfo::availablePorts();
 
     QList<QPair<QString, QVariantMap>> newList;
@@ -3602,12 +4614,7 @@ void MainWindow::updateSerialPorts()
         }
     }
 
-    if(!bUpgrade)
-    {
-        if(IsConnect)
-            bCheckDeviceOffLine=true;
-        GenCommand(GET_TH_CMD, NULL, 0);
-    }
+
 
 
 }
@@ -3650,7 +4657,7 @@ void MainWindow::onCheckFunctionCalled(int count)
 
     if(mSerialScanTimer.elapsed()>=1000)
     {
-        if(IsConnect)
+        /*if(IsConnect)
         {
             if(bCheckDeviceOffLine)
             {
@@ -3670,7 +4677,7 @@ void MainWindow::onCheckFunctionCalled(int count)
                     syncDeviceData();
                 }
             }
-        }
+        }*/
 
         updateSerialPorts();
         mSerialScanTimer.restart();
@@ -3739,6 +4746,7 @@ uint8_t MainWindow::HandlePacket()
 {
     uint8_t ret = 0;
     bCheckDeviceOffLine=false;
+    resetCheckDisconnectFlag();
     if (CMD_Buffer[PAYLOADLEN] == 0x00)
     {
         // for Large Packet Format
@@ -4001,12 +5009,12 @@ uint8_t MainWindow::HandlePacket()
                     {
                         bSend0xB0CommandAfterReset=false;
                         GenCommand(0xB0, NULL, 0);
-                    }
 
-                    if(bReSyncAfterReset)
+                    }
+                    else if(bReSyncAfterReset)
                     {
                        bReSyncAfterReset=false;
-                       bReSyncDataWhenDeviceOnLine=true;
+                        setReconnectFlag();
 
                     }
                 }
@@ -4020,9 +5028,33 @@ uint8_t MainWindow::HandlePacket()
                         QMessageBox::information(NULL, "MessageBox", "Watchdog flag change reset device!!");
                     }
                 }
+                else if (CMD_Buffer[CMDDATA] == SHT4X_SOFT_RESET_CMD)
+                {
+                    if (CMD_Buffer[CMDDATA + 1] == CMD_SUCCESS)
+                    {
+                        QMessageBox::information(NULL, "MessageBox", "SHT4x reset success!!");
+                    }
+                    else
+                    {
+                        QMessageBox::information(NULL, "MessageBox", "SHT4x reset fail!!");
+                    }
+                    recordSHT4x(1);
+                }
+                else if (CMD_Buffer[CMDDATA] == WRITE_SHT4X_CAL_CMD)
+                {
+                    if (CMD_Buffer[CMDDATA + 1] == CMD_SUCCESS)
+                    {
+                        QMessageBox::information(NULL, "MessageBox", "Save Cal Success!!");
+                    }
+                    else
+                    {
+                        QMessageBox::information(NULL, "MessageBox", "Save Cal fail!!");
+                    }
+                }
             break;
             case GET_FW_VERSION_RESPONSE_CMD:
             {
+                //resetCheckDisconnectFlag();
                 devID=0xff;
                 if(CMD_Buffer[CMDDATA]==0xff)
                 {
@@ -4045,18 +5077,168 @@ uint8_t MainWindow::HandlePacket()
                 qDebug() <<"[MainWindow]GET_FW_VERSION_RESPONSE_CMD Version::"<<version;
             }
             break;
+            case SHT4X_NOTIFY_CMD:
+            {
+                notifyTemp=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
+                notifyHumidity=CMD_Buffer[CMDDATA+4]<<24|CMD_Buffer[CMDDATA+5]<<16|CMD_Buffer[CMDDATA+6]<<8|CMD_Buffer[CMDDATA+7];
+
+                recordSHT4xNotify();
+
+                if(baseTemp)
+                    baseTemp->setText("Base Temp:       "+QLocale().toString(notifyTemp/1000.0));
+
+                if(baseHumidity)
+                    baseHumidity->setText("Base Humidity:         "+QLocale().toString(notifyHumidity/1000.0));
+
+                if((notifyTemp/1000.0)>=heatingProtectionTemperature)
+                {
+
+
+                    sht4xCommandIndex=0;
+                    if(infoSHT4xComboBox[0])
+                    {
+                        infoSHT4xComboBox[0]->setCurrentIndex(sht4xCommandIndex);
+                    }
+                    else
+                    {
+                        QSettings settings("AppConfig.ini", QSettings::IniFormat);
+                        settings.setValue("SHT4x/CommandType",sht4xCommandIndex);
+                    }
+
+
+                    QString msg="Temperature greater than "+QLocale().toString(heatingProtectionTemperature)+"\r\nStop heating!!\r\nCommand change to 0xFD high precision";
+                    QMessageBox::information(NULL, "MessageBox", msg);
+                }
+
+            }
+            break;
             case GET_TH_RESPONSE_CMD:
             {
 
-                uint32_t temp=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
-                uint32_t humidity=CMD_Buffer[CMDDATA+4]<<24|CMD_Buffer[CMDDATA+5]<<16|CMD_Buffer[CMDDATA+6]<<8|CMD_Buffer[CMDDATA+7];
+                bWaitReadOutResponse=false;
+                if(CMD_Buffer[1]==9)
+                {
+                    temp=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
+                    humidity=CMD_Buffer[CMDDATA+4]<<24|CMD_Buffer[CMDDATA+5]<<16|CMD_Buffer[CMDDATA+6]<<8|CMD_Buffer[CMDDATA+7];
 
-                ui->temperatureLabel->setText("Temperature:"+QLocale().toString(temp/1000.0));
-                ui->humidtyLabel->setText("Humidty:"+QLocale().toString(humidity/1000.0));
+                    ui->temperatureLabel->setText("Temperature:"+QLocale().toString(temp/1000.0));
+                    ui->humidtyLabel->setText("Humidty:"+QLocale().toString(humidity/1000.0));
+
+
+                }
+                else
+                {
+                    uint16_t tempRaw=CMD_Buffer[CMDDATA]<<8|CMD_Buffer[CMDDATA+1];
+                    uint16_t humidityRaw=CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
+                    uint8_t isValid=CMD_Buffer[CMDDATA+4];
+
+                    /**
+                     * formulas for conversion of the sensor signals, optimized for fixed point
+                     * algebra:
+                     * Temperature = 175 * S_T / 65535 - 45
+                     * Relative Humidity = 125 * (S_RH / 65535) - 6
+                     */
+
+                    qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD isValid:"<<isValid;
+                    if(isValid==0)
+                        return 0;
+
+                    temp = ((21875 * (int32_t)tempRaw) >> 13) - 45000;
+                    humidity = ((15625 * (int32_t)humidityRaw) >> 13) - 6000;
+
+
+                    if(sht4xEnable||bSingleRead)
+                    {
+                        recordSHT4x(0);
+
+                        if(enableCal)
+                        {
+                            ui->temperatureLabel->setText("Temperature:"+QLocale().toString((temp/1000.0)+tempCal));
+                            ui->humidtyLabel->setText("Humidty:"+QLocale().toString((humidity/1000.0)+humidityCal));
+                        }
+                        else
+                        {
+                            ui->temperatureLabel->setText("Temperature:"+QLocale().toString(temp/1000.0));
+                            ui->humidtyLabel->setText("Humidty:"+QLocale().toString(humidity/1000.0));
+                        }
+
+                        bSingleRead=false;
+                    }
+                    else
+                    {
+                        ui->temperatureLabel->setText("Temperature:");
+                        ui->humidtyLabel->setText("Humidty:");
+
+                    }
+
+                    if(sht4xCommandIndex>2)
+                    {
+                        if(heatingTemp)
+                        {
+                            heatingTemp->setText("Heating Temp: "+QLocale().toString(temp/1000.0));
+                        }
+
+                        if(heatingHumidity)
+                        {
+                            heatingHumidity->setText("Hearting Humidity: "+QLocale().toString(humidity/1000.0));
+
+                        }
+                    }
+                    else
+                    {
+                        if(baseTemp)
+                            baseTemp->setText("Base Temp:       "+QLocale().toString(temp/1000.0));
+
+                        if(baseHumidity)
+                            baseHumidity->setText("Base Humidity:         "+QLocale().toString(humidity/1000.0));
+
+                    }
+                    qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD tempRaw:"<<tempRaw;
+                    qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD humidityRaw:"<<humidityRaw;
+
+                }
+
+                qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD Len:"<<CMD_Buffer[1];
                 qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD temperatureLabel:"<<temp;
                 qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD humidtyLabel:"<<humidity;
+
             }
             break;
+            case GET_SHT4X_SERIAL_NUM_RESPONSE_CMD:
+            {
+                sht4xSerialNumber=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
+                qDebug() <<"[MainWindow]GET_SHT4X_SERIAL_NUM_RESPONSE_CMD sht4xSerialNumber:"<<sht4xSerialNumber;
+                if(infoLineEdit[0])
+                {
+                    infoLineEdit[0]->setText("0x"+QString("%1").arg(sht4xSerialNumber, 8, 16, QLatin1Char('0')).toUpper());
+                }
+            }
+            break;
+            case READ_SHT4X_CAL_RESPONSE_CMD:
+            {
+
+                memcpy(&tempCal,&CMD_Buffer[CMDDATA],4);
+                memcpy(&humidityCal,&CMD_Buffer[CMDDATA+4],4);
+
+                if(tempCal!=tempCal)
+                {
+                    tempCal=0;
+                }
+
+                if(humidityCal!=humidityCal)
+                {
+                    humidityCal=0;
+                }
+
+                if(tempCalLineEdit)
+                    tempCalLineEdit->setText(QString::number(tempCal,'f',2));
+
+                if(humidityCalLineEdit)
+                    humidityCalLineEdit->setText(QString::number(humidityCal,'f',2));
+
+                qDebug() <<"[MainWindow]READ_SHT4X_CAL_RESPONSE_CMD tempCal:"<<tempCal;
+                qDebug() <<"[MainWindow]READ_SHT4X_CAL_RESPONSE_CMD humidityCal:"<<humidityCal;
+            }
             case READ_EEPROM_BLOCK_RESPONSE_CMD:
             {
                 uint8_t len=CMD_Buffer[PAYLOADLEN];

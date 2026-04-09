@@ -24,7 +24,7 @@
 #include "CheckWorkerThread.h"
 #include <QElapsedTimer>
 #include <QSettings>
-
+#include <qcheckbox.h>
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -71,8 +71,15 @@ private slots:
     void page4WriteRegBtn_clicked();
     void page4WriteAllBtn_clicked();
     void getTimeBtn_clicked();
+    void setSHT4xSoftrestBtn_clicked();
+    void readSHT4xSerialNumberBtn_clicked();
+    void singleReadSHT4xBtn_clicked();
+    void readCalBtn_clicked();
+    void saveCalBtn_clicked();
     void writeConfig_clicked();
     void clearBtn_clicked();
+    void onStateChanged(Qt::CheckState state);
+    void onLogStateChanged(Qt::CheckState state);
     void tableWidgetPage0SelectChange(QItemSelection selected,QItemSelection deselected);
     void tableWidgetPage2SelectChange(QItemSelection selected,QItemSelection deselected);
     void tableWidgetPage3SelectChange(QItemSelection selected,QItemSelection deselected);
@@ -80,17 +87,45 @@ private slots:
     void handleGroupClick(QAbstractButton* button);
     void infoRadiobtnGroup1clicked(QAbstractButton *button);
     void regSlelectChange(int index);
+    void sht4xCommandSlelectChange(int index);
+    void sht4xIntervalSlelectChange(int index);
     void regSliderChange(int index);
     void onTabChanged(int index);
     void onCheckFunctionCalled(int count);
     void onWorkFinished();
 
+private:
+    QString sht4x_m_logDir = "sensor_record";
+    QString sht4x_m_curDate;
+    QFile sht4x_m_file;
+    void rotateSHT4xRecordFileIfNeeded();
+    void rotateSHT4xSeparateCheckRecordFileIfNeeded();
+    void recordSHT4x(int type);
+    void recordSHT4xNotify();
+
+    QString m_logDir = "info_record";
+    QString m_curDate;
+    QFile m_file;
+    QStringList oldValueList;
+    bool bWriteRecordInfo;
+    void onTimer();
+    QTimer *timer;
+    bool bCheckCMDSend;
+    bool bDisconnect;
+    bool reConnectSync;
+    uint8_t waitCMDResponseCount;
+    uint8_t SendCommandInterval;
+    uint8_t reConnectSyncCount;
+    void checkDisconnect();
+    void resetCheckDisconnectFlag();
+    void setReconnectFlag();
 
 private:
     Ui::MainWindow *ui;
     QSerialPort *mSerial;
     QList<QSerialPortInfo> mSerialPorts;
     QElapsedTimer mSerialScanTimer;
+    QElapsedTimer mCheckOfflineTimer;
     void updateSerialPorts();
 
     bool checkMCP2221SerialNumberEnumerationEnable(unsigned int VID, unsigned int PID);
@@ -164,6 +199,43 @@ private:
     QGroupBox *infoGroupBox;
     QPushButton *infoRefreshBtn;
     QRadioButton *infoRadioButton[6];
+    QComboBox *infoSHT4xComboBox[2];
+    QPushButton *singleReadSHT4xBtn;
+    QPushButton *setSHT4xSoftrestBtn;
+    QPushButton *readSHT4xSerialNumberBtn;
+    QPushButton *saveCalBtn;
+    QPushButton *readCalBtn;
+    QCheckBox *startCheckBox;
+    QCheckBox *enableLogCheckBox;
+    QLabel *baseTemp;
+    QLabel *baseHumidity;
+    QLabel *heatingTemp;
+    QLabel *heatingHumidity;
+    QLineEdit *tempCalLineEdit;
+    QLineEdit *humidityCalLineEdit;
+    uint32_t sht4xSerialNumber;
+    float tempCal;
+    float humidityCal;
+    int enableCal;
+    int sht4xCommandIndex;
+    int readoutInterval;
+    int readOutIntervalCount;
+    bool bWaitReadOutResponse;
+    int waitReadOutResponseCount;
+    int sht4xEnable;
+    int sht4xEnableLog;
+    int sht4xLogType;
+    float heatingProtectionTemperature;
+    bool bSingleRead;
+    bool bWaitDeviceReady;
+    int  waitDeviceReadyCount;
+
+    int32_t temp;
+    int32_t humidity;
+    int32_t notifyTemp;
+    int32_t notifyHumidity;
+    uint8_t getSHT4xCMD(int index);
+    void readOutSHT4x();
     int fromBCD(uint8_t bcd);
     uint8_t toBCD(int val);
     QDateTime bcdToDateTime(uint8_t *bcd);
@@ -175,12 +247,6 @@ private:
     void rotateNoteRecordFileIfNeeded();
     void recordWriteHubInfo();
     void rotateHubInfoRecordFileIfNeeded();
-
-    QString m_logDir = "info_record";
-    QString m_curDate;
-    QFile m_file;
-    QStringList oldValueList;
-    bool bWriteRecordInfo;
 
     QPushButton *getTimeBtn;
     QPushButton *writeConfig;
@@ -250,6 +316,7 @@ private:
     void createEditInfo();
     void createEditNote();
     void createEditHubInfo();
+    void createSHT4xSetting();
     void createShowRefFreqResponse();
     void createEditRefFreqResponse();
 
@@ -259,6 +326,7 @@ private:
                                           &MainWindow::createEditInfo,
                                           &MainWindow::createEditNote,
                                           &MainWindow::createEditHubInfo,
+                                          &MainWindow::createSHT4xSetting,
                                           &MainWindow::createShowRefFreqResponse,
                                           &MainWindow::createEditRefFreqResponse};
 

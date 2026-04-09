@@ -17,6 +17,7 @@ SOURCES += \
     PageManager/page2datamanager.cpp \
     PageManager/page3datamanager.cpp \
     PageManager/page4datamanager.cpp \
+    SleepGuard/SleepGuard.cpp \
     main.cpp \
     mainwindow.cpp
 
@@ -35,6 +36,7 @@ HEADERS += \
     PageManager/page3datamanager.h \
     PageManager/page4datamanager.h \
     PageManager/pageElement.h \
+    SleepGuard/SleepGuard.h \
     mainwindow.h \
 
 FORMS += \
@@ -51,6 +53,7 @@ INCLUDEPATH += $$PWD/. \
                $$PWD/PageManager \
                $$PWD/LogManager \
                $$PWD/MCP2221 \
+               $$PWD/SleepGuard \
                $$PWD/Common
 DEPENDPATH += $$PWD/. \
               $$PWD/MCP2221
