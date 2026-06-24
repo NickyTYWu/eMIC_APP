@@ -25,11 +25,16 @@
 #include <QElapsedTimer>
 #include <QSettings>
 #include <qcheckbox.h>
+#include <QProgressDialog>
+#include <QApplication>
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
 }
 QT_END_NAMESPACE
+
+#define TIMER_INTERVAL 10
+class SensorCard;
 
 class MainWindow : public QMainWindow
 {
@@ -48,24 +53,28 @@ private slots:
     void upgradeBtn_clicked();
     void page0RefreshBtn_clicked();
     void page0SaveBtn_clicked();
+    void page0SaveAllBtn_clicked();
     void page0ImportBtn_clicked();
     void page0ExportBtn_clicked();
     void page0WriteRegBtn_clicked();
     void page0WriteAllBtn_clicked();
     void page2RefreshBtn_clicked();
     void page2SaveBtn_clicked();
+    void page2SaveAllBtn_clicked();
     void page2ImportBtn_clicked();
     void page2ExportBtn_clicked();
     void page2WriteRegBtn_clicked();
     void page2WriteAllBtn_clicked();
     void page3RefreshBtn_clicked();
     void page3SaveBtn_clicked();
+    void page3SaveAllBtn_clicked();
     void page3ImportBtn_clicked();
     void page3ExportBtn_clicked();
     void page3WriteRegBtn_clicked();
     void page3WriteAllBtn_clicked();
     void page4RefreshBtn_clicked();
     void page4SaveBtn_clicked();
+    void page4SaveAllBtn_clicked();
     void page4ImportBtn_clicked();
     void page4ExportBtn_clicked();
     void page4WriteRegBtn_clicked();
@@ -74,6 +83,9 @@ private slots:
     void setSHT4xSoftrestBtn_clicked();
     void readSHT4xSerialNumberBtn_clicked();
     void singleReadSHT4xBtn_clicked();
+    void singleReadDSP368_clicked();
+    void sbm100_readFrom_clicked();
+    void writeTo_clicked();
     void readCalBtn_clicked();
     void saveCalBtn_clicked();
     void writeConfig_clicked();
@@ -89,10 +101,57 @@ private slots:
     void regSlelectChange(int index);
     void sht4xCommandSlelectChange(int index);
     void sht4xIntervalSlelectChange(int index);
+    void DPS368TempOversampleSlelectChange(int index);
+    void DPS368PressureOversampleSlelectChange(int index);
+    void DPS368IntervalSlelectChange(int index);
+    void SMB100_dcb_bypass_SlelectChange(int index);
+    void SMB100_dcb_cutoff_SlelectChange(int index);
+    void SMB100_biquad_coeff_write_SlelectChange(int index);
+    void SMB100_biquad_bypass_SlelectChange(int index);
+    void SMB100_out24not28_SlelectChange(int index);
+    void SMB100_polarity_SlelectChange(int index);
+    void SMB100_user_gain_index_SlelectChange(int index);
+    void SMB100_readFrom_SlelectChange(int index);
+    void SMB100_writeTo_SlelectChange(int index);
     void regSliderChange(int index);
     void onTabChanged(int index);
     void onCheckFunctionCalled(int count);
     void onWorkFinished();
+private:
+    SensorCard *m_sht4xCard;
+    SensorCard *m_dsp368Card;
+    SensorCard *m_deviceidCard;
+    int burnInfo;
+    QString C1ModelNumber;
+    QString C1VersionLetter;
+    QString C1SerialNumber;
+    QString C1Sensitivity;
+    QString C1ReferenceFrequency;
+    QString C1UnitsCode;
+    QString C1FrequencyRangeMin;
+    QString C1FrequencyRangeMax;
+    QString C1ChannelAssignment;
+
+    QString C2ModelNumber;
+    QString C2VersionLetter;
+    QString C2SerialNumber;
+    QString C2Sensitivity;
+    QString C2ReferenceFrequency;
+    QString C2UnitsCode;
+    QString C2FrequencyRangeMin;
+    QString C2FrequencyRangeMax;
+    QString C2ChannelAssignment;
+
+    QString systemDigitInterfaceType;
+    QString systemBitClockFrequency;
+    QString systemWordLength;
+    QString systemSampleRate;
+    QString systemSerialnumber;
+    QString systemSensitivity;
+    QString systemCalibrationDate;
+    QString systemManufactuerID;
+    int SerialNumberOffset;
+    void WriteInfoSuccessIncreaseSerialNumberOffset();
 
 private:
     QString sht4x_m_logDir = "sensor_record";
@@ -119,6 +178,73 @@ private:
     void checkDisconnect();
     void resetCheckDisconnectFlag();
     void setReconnectFlag();
+
+    QComboBox *infoDPS368ComboBox[3];
+    int dsp368ReadoutInterval;
+    int dsp368ReadoutIntervalIndex;
+    int dsp368ReadOutIntervalCount;
+    int dsp368Enable;
+    int dsp368EnableLog;
+    bool bWaitDsp368ReadOutResponse;
+    int waitDsp368ReadOutResponseCount;
+    int dsp368TempOSRIndex;
+    int dsp368PressureOSRIndex;
+    int32_t m_c00;
+    int32_t m_c10;
+    int32_t m_c01;
+    int32_t m_c11;
+    int32_t m_c20;
+    int32_t m_c21;
+    int32_t m_c30;
+    int32_t m_c0Half;
+    int32_t m_c1;
+    float m_lastTempScal;
+    float dsp368_pressure;
+    float dsp368_temp;
+    bool isDSP368Exist;
+    int checkDSP368RetryCount;
+    QString getOSR(int index);
+    void readOutDSP368();
+    void initCoeff(uint8_t *rawData);
+    void getTwosComplement(int32_t *raw, uint8_t length);
+    float calcTemp(int32_t raw,int m_tempOsr);
+    float calcPressure(int32_t raw,int m_prsOsr);
+    int getDPS368ReadOutInterval(int index);
+
+    QString DSP368_m_curDate;
+    QFile DSP368_m_file;
+    void rotateDSP368RecordFileIfNeeded();
+    void recordDSP368(int type);
+    const int32_t scaling_facts[8] = {524288, 1572864, 3670016, 7864320, 253952, 516096, 1040384, 2088960};
+
+    QComboBox *infoSBM100ComboBox[9];
+    QLineEdit *infoSBM100LineEdit[5];
+    QSlider *infoSBM100slider;
+    QPushButton *readFromBtn;
+    QPushButton *writeToBtn;
+    uint8_t dcb_bypass;
+    uint8_t dcb_cutoff;
+    uint16_t biquad_b0;
+    uint16_t biquad_b1;
+    uint16_t biquad_b2;
+    uint16_t biquad_a1;
+    uint16_t biquad_a2;
+    uint16_t biquad_coeff_write;
+    uint16_t biquad_bypass;
+    uint8_t out24not28;
+    uint8_t polarity;
+    uint8_t user_gain;
+    int     user_gain_index;
+    int readFromIndex;
+    int writeToIndex;
+    bool sbm100_breadFrom;
+    bool sbm100_bwriteTo;
+    bool isSBM100Exist;
+    int get_user_gain_index(uint8_t reg);
+    void updateSBM100UI();
+    uint8_t SBM100_REG[18];
+
+
 
 private:
     Ui::MainWindow *ui;
@@ -198,9 +324,9 @@ private:
     QButtonGroup  *infoBtnGrup;
     QGroupBox *infoGroupBox;
     QPushButton *infoRefreshBtn;
-    QRadioButton *infoRadioButton[6];
+    QRadioButton *infoRadioButton[7];
     QComboBox *infoSHT4xComboBox[2];
-    QPushButton *singleReadSHT4xBtn;
+    QPushButton *singleReadBtn;
     QPushButton *setSHT4xSoftrestBtn;
     QPushButton *readSHT4xSerialNumberBtn;
     QPushButton *saveCalBtn;
@@ -218,6 +344,7 @@ private:
     float humidityCal;
     int enableCal;
     int sht4xCommandIndex;
+    int readoutIntervalIndex;
     int readoutInterval;
     int readOutIntervalCount;
     bool bWaitReadOutResponse;
@@ -229,6 +356,7 @@ private:
     bool bSingleRead;
     bool bWaitDeviceReady;
     int  waitDeviceReadyCount;
+    int getSHT4xReadOutInterval(int index);
 
     int32_t temp;
     int32_t humidity;
@@ -252,8 +380,8 @@ private:
     QPushButton *writeConfig;
     QPushButton *clearBtn;
     QTextEdit   *infoNoteEdit;
-    QButtonGroup *btnGrup[8];
-    QGroupBox *GroupBox[8];
+    QButtonGroup *btnGrup[10];
+    QGroupBox *GroupBox[10];
     QLineEdit *infoLineEdit[40];
     QLabel *descriptionLabel[40];
     QRadioButton *radioButton[40];
@@ -317,8 +445,26 @@ private:
     void createEditNote();
     void createEditHubInfo();
     void createSHT4xSetting();
+    void createDPS368Setting();
+    void createSBM100Setting();
     void createShowRefFreqResponse();
     void createEditRefFreqResponse();
+
+    void saveAllPages();
+    void savePage0();
+    void savePage2();
+    void savePage3();
+    void savePage4();
+    void checkSaveAllTimeout();
+    void resetSaveAllTimeout();
+    QProgressDialog *writeEEPROMprogress;
+    bool bSaveAllFlag;
+    uint16_t saveAllTimeOut;
+    int csvAutoImport;
+    int Import_CSV_File_Before_Write;
+    void autoImportCSVFile();
+    void importCSVBeforeSave();
+    QString AppVersion;
 
     using Func = void (MainWindow::*)();
 
@@ -327,6 +473,8 @@ private:
                                           &MainWindow::createEditNote,
                                           &MainWindow::createEditHubInfo,
                                           &MainWindow::createSHT4xSetting,
+                                          &MainWindow::createDPS368Setting,
+                                          &MainWindow::createSBM100Setting,
                                           &MainWindow::createShowRefFreqResponse,
                                           &MainWindow::createEditRefFreqResponse};
 

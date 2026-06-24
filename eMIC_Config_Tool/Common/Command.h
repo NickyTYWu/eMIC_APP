@@ -90,6 +90,13 @@ extern "C" {
 #define WRITE_SHT4X_CAL_CMD                              0x4B
 #define READ_SHT4X_CAL_CMD                               0x4C
 #define READ_SHT4X_CAL_RESPONSE_CMD                      0x4D
+#define READ_DPS368_COEFF_CMD                            0x4E
+#define READ_DPS368_COEFF_RESPONSE_CMD                   0x4F
+#define READ_DPS368_TEMP_AND_PRESSURE_CMD                0x50
+#define READ_DPS368_TEMP_AND_PRESSURE_RESPONS_CMD        0x51
+#define READ_SBM100_BLOCK_CMD                            0x52
+#define READ_SBM100_BLOCK_RESPONSE_CMD                   0x53
+#define WRITE_SBM100_BLOCK_CMD                           0x54
 #define REBOOT_CMD                                       0xAA
 #define GATMODE_CMD                                      0xB0
 #define OTA_UPGRADE_INIT_CMD                             0xB2
