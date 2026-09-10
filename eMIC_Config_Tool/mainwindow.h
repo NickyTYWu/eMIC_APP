@@ -120,6 +120,7 @@ private slots:
 private:
     SensorCard *m_sht4xCard;
     SensorCard *m_dsp368Card;
+    SensorCard *m_STM32TempCard;
     SensorCard *m_deviceidCard;
     int burnInfo;
     QString C1ModelNumber;
@@ -360,6 +361,7 @@ private:
 
     int32_t temp;
     int32_t humidity;
+    float stm32TEMP;
     int32_t notifyTemp;
     int32_t notifyHumidity;
     uint8_t getSHT4xCMD(int index);

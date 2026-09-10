@@ -52,6 +52,13 @@ MainWindow::MainWindow(QWidget *parent)
                     "Pa",
                     this);
 
+        m_STM32TempCard=
+                new SensorCard(
+                    "STM32",
+                    "°C",
+                    "",
+                    this);
+
         m_deviceidCard=
                 new SensorCard(
                     "Device ID",
@@ -61,6 +68,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->horizontalLayout->addWidget(m_sht4xCard);
     ui->horizontalLayout->addWidget(m_dsp368Card);
+    ui->horizontalLayout->addWidget(m_STM32TempCard);
     ui->horizontalLayout->addWidget(m_deviceidCard);
 
 
@@ -587,6 +595,7 @@ void MainWindow::checkDisconnect()
                 //ui->tempDPS368Label->setText("Temperature:");
                 m_dsp368Card->clearValue1();
                 m_dsp368Card->clearValue2();
+                m_STM32TempCard->clearValue1();
                 m_deviceidCard->clearDeviceId();
                 //ui->deviceIDlabel->setText("");
                 //setWindowTitle(AppVersion+" Device ID:");
@@ -745,7 +754,7 @@ void MainWindow::initInfoRadioButton()
         infoRadioButton[5]->setEnabled(false);
     infoRadioButton[5]->show();
 
-
+isSBM100Exist=true;
     infoRadioButton[6]->setGeometry(40,240,240,20);
     infoRadioButton[6]->setText("SBM100 setting");
     if(isSBM100Exist)
@@ -831,7 +840,10 @@ bool MainWindow::checkMCP2221SerialNumberEnumerationEnable(unsigned int VID, uns
     bool bReconnect=false;
 
     qDebug() << "[MainWindow]checkMCP2221SerialNumberEnumerationEnable";
-
+    if(checkComPortIsMcp2221==0)
+    {
+        return true;
+    }
     //Get number of connected devices with this VID & PID
     Mcp2221_GetConnectedDevices(VID, PID, &NumOfDev);
     if(NumOfDev == 0)
@@ -855,7 +867,8 @@ bool MainWindow::checkMCP2221SerialNumberEnumerationEnable(unsigned int VID, uns
         flag = Mcp2221_GetFactorySerialNumber(handle, PordSerNum);
         if(flag == 0)
         {
-            error_string = "Factory serial number: " + QString::fromWCharArray(PordSerNum);
+            QString SerialNumber=QString::fromWCharArray(PordSerNum);
+            error_string = "Factory serial number: " + SerialNumber;
         }
         else
         {
@@ -1269,6 +1282,7 @@ void MainWindow::comPortDisconnect()
     //ui->tempDPS368Label->setText("Temperature:");
     m_dsp368Card->clearValue1();
     m_dsp368Card->clearValue2();
+    m_STM32TempCard->clearValue1();
     //ui->deviceIDlabel->setText("");
     //setWindowTitle(AppVersion+" Device ID:");
     m_deviceidCard->clearDeviceId();
@@ -5223,7 +5237,7 @@ int MainWindow::get_user_gain_index(uint8_t reg)
 
 void MainWindow::createSBM100Setting()
 {
-    qDebug() << "[MainWindow]createDPS368Setting";
+    qDebug() << "[MainWindow]createSBM100Setting";
 
 
     deletePage();
@@ -5804,7 +5818,6 @@ void MainWindow::createDPS368Setting()
 
     connect(infoDPS368ComboBox[1],SIGNAL(currentIndexChanged(int)),this,SLOT(DPS368PressureOversampleSlelectChange(int)));
 
-
     descriptionLabel[2]->setGeometry(460,195,120,20);
     descriptionLabel[2]->setText("Time Interval:");
     descriptionLabel[2]->show();
@@ -5895,8 +5908,6 @@ void MainWindow::createDPS368Setting()
 
         );
 
-
-
     startCheckBox->show();
 
     connect(startCheckBox, &QCheckBox::checkStateChanged,this, &MainWindow::onStateChanged);
@@ -5932,8 +5943,6 @@ void MainWindow::createDPS368Setting()
 
         );
 
-
-
     enableLogCheckBox->show();
 
     connect(enableLogCheckBox, &QCheckBox::checkStateChanged,this, &MainWindow::onLogStateChanged);
@@ -5946,8 +5955,6 @@ void MainWindow::createDPS368Setting()
     {
         enableLogCheckBox->setChecked(false);
     }
-
-
 }
 
 void MainWindow::createSHT4xSetting()
@@ -6372,7 +6379,7 @@ void MainWindow::createEditRefFreqResponse()
 
 void MainWindow::connectBtn_clicked()
 {
-    qDebug() << "[MainWindow]connectBtn_clicked";;
+    qDebug() << "[MainWindow]connectBtn_clicked";
 
     if(ui->comPort_comboBox->currentIndex()==-1)
         return;
@@ -6393,7 +6400,6 @@ void MainWindow::connectBtn_clicked()
             return;
         }
     }
-
 
     if (mSerial->isOpen()) {
         qDebug() << "[MainWindow]Serial already connected, disconnecting!";
@@ -6883,6 +6889,7 @@ uint8_t MainWindow::HandlePacket()
                     ui->tabWidget->setTabEnabled(3,true);
                     ui->tabWidget->setTabEnabled(4,true);
                     GenCommand(0x01, NULL, 0);
+                    refreshInfo();
                 }
                 else if (CMD_Buffer[CMDDATA] == WRITE_EEPROM_BLOCK_CMD)
                 {
@@ -7355,11 +7362,12 @@ uint8_t MainWindow::HandlePacket()
                 {
                     temp=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
                     humidity=CMD_Buffer[CMDDATA+4]<<24|CMD_Buffer[CMDDATA+5]<<16|CMD_Buffer[CMDDATA+6]<<8|CMD_Buffer[CMDDATA+7];
-
+                    memcpy(&stm32TEMP,&CMD_Buffer[CMDDATA+8],sizeof(float));
                     //ui->temperatureLabel->setText("Temperature:"+QLocale().toString(temp/1000.0));
                     //ui->humidtyLabel->setText("Humidty:"+QLocale().toString(humidity/1000.0));
                     m_sht4xCard->setValue1(temp/1000.0);
                     m_sht4xCard->setValue2(humidity/1000.0);
+                    m_STM32TempCard->setValue1(stm32TEMP);
 
 
                 }
@@ -7369,6 +7377,8 @@ uint8_t MainWindow::HandlePacket()
                     uint16_t humidityRaw=CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
                     uint8_t isValid=CMD_Buffer[CMDDATA+4];
 
+                    memcpy(&stm32TEMP,&CMD_Buffer[CMDDATA+5],sizeof(float));
+
                     /**
                      * formulas for conversion of the sensor signals, optimized for fixed point
                      * algebra:
@@ -7377,13 +7387,14 @@ uint8_t MainWindow::HandlePacket()
                      */
 
                     qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD isValid:"<<isValid;
+                    qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD stm32TEMP:"<<stm32TEMP;
                     if(isValid==0)
                         return 0;
 
                     temp = ((21875 * (int32_t)tempRaw) >> 13) - 45000;
                     humidity = ((15625 * (int32_t)humidityRaw) >> 13) - 6000;
 
-
+                    m_STM32TempCard->setValue1(stm32TEMP);
                     if(sht4xEnable||bSingleRead)
                     {
                         recordSHT4x(0);
@@ -7394,6 +7405,7 @@ uint8_t MainWindow::HandlePacket()
                             //ui->humidtyLabel->setText("Humidty:"+QLocale().toString((humidity/1000.0)+humidityCal));
                             m_sht4xCard->setValue1((temp/1000.0)+tempCal);
                             m_sht4xCard->setValue2((humidity/1000.0)+humidityCal);
+
                         }
                         else
                         {
@@ -7412,8 +7424,6 @@ uint8_t MainWindow::HandlePacket()
                         //ui->humidtyLabel->setText("Humidty:");
                         m_sht4xCard->clearValue1();
                         m_sht4xCard->clearValue2();
-
-
                     }
 
                     if(sht4xCommandIndex>2)

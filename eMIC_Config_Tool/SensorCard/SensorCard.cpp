@@ -96,25 +96,45 @@ SensorCard::SensorCard(const QString &title,
         mainLayout->addLayout(valueLayout);
         mainLayout->addStretch();
     }
+    else if(unit2.isEmpty())
+    {
+        QHBoxLayout *valueLayout = new QHBoxLayout;
+
+        QVBoxLayout *leftLayout = new QVBoxLayout;
+        leftLayout->addWidget(m_value1Label);
+        leftLayout->addWidget(m_unit1Label);
+
+        //QVBoxLayout *rightLayout = new QVBoxLayout;
+        //rightLayout->addWidget(m_value2Label);
+        //rightLayout->addWidget(m_unit2Label);
+
+        valueLayout->addLayout(leftLayout);
+        valueLayout->addSpacing(40);
+        //valueLayout->addLayout(rightLayout);
+
+        mainLayout->addSpacing(1);
+        mainLayout->addLayout(valueLayout);
+        mainLayout->addStretch();
+    }
     else
     {
-    QHBoxLayout *valueLayout = new QHBoxLayout;
+        QHBoxLayout *valueLayout = new QHBoxLayout;
 
-    QVBoxLayout *leftLayout = new QVBoxLayout;
-    leftLayout->addWidget(m_value1Label);
-    leftLayout->addWidget(m_unit1Label);
+        QVBoxLayout *leftLayout = new QVBoxLayout;
+        leftLayout->addWidget(m_value1Label);
+        leftLayout->addWidget(m_unit1Label);
 
-    QVBoxLayout *rightLayout = new QVBoxLayout;
-    rightLayout->addWidget(m_value2Label);
-    rightLayout->addWidget(m_unit2Label);
+        QVBoxLayout *rightLayout = new QVBoxLayout;
+        rightLayout->addWidget(m_value2Label);
+        rightLayout->addWidget(m_unit2Label);
 
-    valueLayout->addLayout(leftLayout);
-    valueLayout->addSpacing(40);
-    valueLayout->addLayout(rightLayout);
+        valueLayout->addLayout(leftLayout);
+        valueLayout->addSpacing(40);
+        valueLayout->addLayout(rightLayout);
 
-    mainLayout->addSpacing(1);
-    mainLayout->addLayout(valueLayout);
-    mainLayout->addStretch();
+        mainLayout->addSpacing(1);
+        mainLayout->addLayout(valueLayout);
+        mainLayout->addStretch();
     }
 }
 
