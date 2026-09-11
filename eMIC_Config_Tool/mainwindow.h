@@ -43,7 +43,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-
+    friend class CliRunner;
+signals:
+    void cliCommandCompleted(bool success);
 private slots:
     void uartChannelChange(int index);
     void serialReadyRead();

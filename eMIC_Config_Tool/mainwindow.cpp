@@ -16,11 +16,12 @@
 #include "LogManager.h"
 #include "LogLevel.h"
 #include <qtimer.h>
-#include "SleepGuard.h"
+//#include "SleepGuard.h"
 #include "SensorCard.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include "global.h"
 
 //#define PID 0xDD
 //#define VID 0x4D8
@@ -1164,7 +1165,8 @@ void MainWindow::updateUartChannel(int index)
 
 void MainWindow::syncDeviceData()
 {
-    if(!IsConnect)
+
+    if(!IsConnect||isCliMode)
         return;
 
     checkDSP368RetryCount=0;
@@ -1509,6 +1511,7 @@ bool MainWindow::isValidHexByte(const QString &str)
 bool MainWindow::checkImportCSVFormat(QTableWidget *tableWidget, const QString &filePath)
 {
     qDebug() << "[MainWindow]checkImportCSVFormat()";
+
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
@@ -1962,8 +1965,6 @@ void MainWindow::savePage2()
 {
 
     uint8_t pageBuf[PAGE2_REG_MAX_SIZE+2];
-
-
 
     pageBuf[0]=BLOCK_ID_PAGE2;
 
@@ -4304,6 +4305,7 @@ void MainWindow::readOutDSP368()
             GenCommand(READ_DPS368_COEFF_CMD, NULL, 0);
             checkDSP368RetryCount++;
         }
+
         return;
     }
 
@@ -6417,6 +6419,12 @@ void MainWindow::connectBtn_clicked()
         qDebug() << "[MainWindow]SERIAL: OK!";
         comPortConnect();
     } else {
+        if(isCliMode)
+        {
+            outMSG <<"Error: com port open fail!!\r\n";
+            emit cliCommandCompleted(false);
+            return;
+        }
         QMessageBox::information(NULL, "MessageBox", "com port open fail!!");
         qDebug() << "[MainWindow]SERIAL: ERROR!";
     }
@@ -6908,8 +6916,17 @@ uint8_t MainWindow::HandlePacket()
                             resetSaveAllTimeout();
                             bSaveAllFlag=false;
                         }
-                        qDebug() <<"[MainWindow]Save Checksum Fail!!";
-                        QMessageBox::information(NULL, "MessageBox", "Save Checksum Fail!!");
+                         // 建立不受限制的標準輸出流
+                        if(isCliMode)
+                        {
+                            outMSG << "\n>> [Feedback] write Page2 checksum error!!" << Qt::endl;
+                            emit cliCommandCompleted(false);
+                        }
+                        else
+                        {
+                            qDebug() <<"[MainWindow]Save Checksum Fail!!";
+                            QMessageBox::information(NULL, "MessageBox", "Save Checksum Fail!!");
+                        }
 
                     }
                     else if (CMD_Buffer[CMDDATA + 1] == CMD_PAGE0_WRITE_SUCCESS)
@@ -6927,6 +6944,13 @@ uint8_t MainWindow::HandlePacket()
                         else
                         {
                             GenCommand(0xAA, NULL, 0);
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write Page0 Successed!!" << Qt::endl;
+                                outMSG << ">> [Feedback] reboot......" << Qt::endl;
+                                return 0;
+                            }
+
                             qDebug() <<"[MainWindow]Save Success!!";
                             QMessageBox::information(NULL, "MessageBox", "Save Page0 Success!!");
                         }
@@ -6947,6 +6971,12 @@ uint8_t MainWindow::HandlePacket()
                         else
                         {
                             GenCommand(0xAA, NULL, 0);
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write Page2 Successed!!" << Qt::endl;
+                                outMSG << ">> [Feedback] reboot......" << Qt::endl;
+                                return 0;
+                            }
                             qDebug() <<"[MainWindow]Save Success!!";
                             QMessageBox::information(NULL, "MessageBox", "Save Page2 Success!!");
                         }
@@ -6968,6 +6998,12 @@ uint8_t MainWindow::HandlePacket()
                         else
                         {
                             GenCommand(0xAA, NULL, 0);
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write Page3 Successed!!" << Qt::endl;
+                                outMSG << ">> [Feedback] reboot......" << Qt::endl;
+                                return 0;
+                            }
                             qDebug() <<"[MainWindow]Save Success!!";
                             QMessageBox::information(NULL, "MessageBox", "Save Page3 Success!!");
                         }
@@ -6999,6 +7035,12 @@ uint8_t MainWindow::HandlePacket()
                         else
                         {
                             GenCommand(0xAA, NULL, 0);
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write Page4 Successed!!" << Qt::endl;
+                                outMSG << ">> [Feedback] reboot......" << Qt::endl;
+                                return 0;
+                            }
                             qDebug() <<"[MainWindow]Save Success!!";
                             QMessageBox::information(NULL, "MessageBox", "Save Page4 Success!!");
                         }
@@ -7058,17 +7100,35 @@ uint8_t MainWindow::HandlePacket()
                     {
                         if (CMD_Buffer[CMDDATA + 1] == CMD_CHECKSUMERROR)
                         {
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write PCMD Checksum Fail!!" << Qt::endl;
+                                emit cliCommandCompleted(false);
+                                return 0;
+                            }
                             qDebug() <<"[MainWindow]Write All Checksum Fail!!";
                             QMessageBox::information(NULL, "MessageBox", "Write All Checksum Fail!!");
                         }
                         else
                         {
+                            if(isCliMode)
+                            {
+                                outMSG << "\n>> [Feedback] write PCMD Fail!!" << Qt::endl;
+                                emit cliCommandCompleted(false);
+                                return 0;
+                            }
                             qDebug() <<"[MainWindow]Write All Fail!!";
                             QMessageBox::information(NULL, "MessageBox", "Write All Fail!!");
                         }
                     }
                     else
                     {
+                        if(isCliMode)
+                        {
+                            outMSG << "\n>> [Feedback] write PCMD Successed!!" << Qt::endl;
+                            emit cliCommandCompleted(true);
+                            return 0;
+                        }
                         qDebug() <<"[MainWindow]Write All Success!!";
                         QMessageBox::information(NULL, "MessageBox", "Write All Success!!");
                     }
@@ -7101,6 +7161,11 @@ uint8_t MainWindow::HandlePacket()
                 else if (CMD_Buffer[CMDDATA] == 0xAA)
                 {
                     qDebug() <<"[MainWindow]Device reset success!!";
+                    if(isCliMode)
+                    {
+                        outMSG << ">> [Feedback] Reboot Successed!!" << Qt::endl;
+                        emit cliCommandCompleted(true);
+                    }
                     if(bSend0xB0CommandAfterReset)
                     {
                         bSend0xB0CommandAfterReset=false;
@@ -7173,11 +7238,21 @@ uint8_t MainWindow::HandlePacket()
                 {
                     version=CMD_Buffer[CMDDATA+1];
                     ui->fwVerionLabel->setText("The App has been erased and the device is now\r\nin bootloader mode.BL Version:"+QString::asprintf("%02d",version));
+                    if(isCliMode)
+                    {
+                         outMSG << "\n>> [Feedback] Mode: Bootloader Mode. BL Version: " << QString::asprintf("%02d", version) << Qt::endl;
+                         emit cliCommandCompleted(true);
+                    }
                 }
                 else
                 {
                     version=CMD_Buffer[CMDDATA]<<8|CMD_Buffer[CMDDATA+1];
                     ui->fwVerionLabel->setText("Device FW Version:R"+QString::asprintf("%02d",version));
+                    if(isCliMode)
+                    {
+                         outMSG << "\n>> [Feedback] FW Version: R" << QString::asprintf("%02d", version) << Qt::endl;
+                         emit cliCommandCompleted(true);
+                    }
                 }
                 if(CMD_Buffer[PAYLOADLEN]<4)
                 {
@@ -7187,6 +7262,7 @@ uint8_t MainWindow::HandlePacket()
                 {
                     devID=CMD_Buffer[CMDDATA+2];
                 }
+
                 qDebug() <<"[MainWindow]GET_FW_VERSION_RESPONSE_CMD Version:"<<version;
                 qDebug() <<"[MainWindow]devID:"<<devID;
             }
@@ -7267,6 +7343,10 @@ uint8_t MainWindow::HandlePacket()
                     isDSP368Exist=true;
                     infoRadioButton[5]->setEnabled(true);
                     //infoRadioButton[5]->setVisible(true);
+                    if(isCliMode)
+                    {
+                        readOutDSP368();
+                    }
                 }
                 else
                 {
@@ -7312,6 +7392,16 @@ uint8_t MainWindow::HandlePacket()
 
                 //ui->pressureLabel->setText("Pressure:"+QLocale().toString(dsp368_pressure));
                 //ui->tempDPS368Label->setText("Temperature:"+QLocale().toString(dsp368_temp));
+
+                if(isCliMode)
+                {
+                    outMSG << "\n>> [DSP386 Sensor Read Successful]" << Qt::endl;
+                    outMSG << ">> [Feedback] DSP368 Temperature: " <<dsp368_temp<< Qt::endl;
+                    outMSG << ">> [Feedback] DSP368 Pressure: " << Qt::fixed << qSetRealNumberPrecision(3) <<dsp368_pressure<< Qt::endl;
+
+                    emit cliCommandCompleted(true);
+                    return 0;
+                }
 
                 m_dsp368Card->setValue1(dsp368_temp);
                 m_dsp368Card->setValue2(dsp368_pressure);
@@ -7363,6 +7453,16 @@ uint8_t MainWindow::HandlePacket()
                     temp=CMD_Buffer[CMDDATA]<<24|CMD_Buffer[CMDDATA+1]<<16|CMD_Buffer[CMDDATA+2]<<8|CMD_Buffer[CMDDATA+3];
                     humidity=CMD_Buffer[CMDDATA+4]<<24|CMD_Buffer[CMDDATA+5]<<16|CMD_Buffer[CMDDATA+6]<<8|CMD_Buffer[CMDDATA+7];
                     memcpy(&stm32TEMP,&CMD_Buffer[CMDDATA+8],sizeof(float));
+                    if(isCliMode)
+                    {
+                         outMSG << "\n>> [SHT4x Sensor Read Successful]" << Qt::endl;
+                         outMSG << "[Feedback] SHT4x Temperature: " << QString::number(temp / 1000.0, 'f', 2) << " deg C" << Qt::endl;
+                         outMSG << "[Feedback] SHT4x Humidity: " << QString::number(humidity / 1000.0, 'f', 2) << " %RH" << Qt::endl;
+                         outMSG << "[Feedback] STM32 Temperature: " << QString::number(stm32TEMP) << " deg C" << Qt::endl;
+                         emit cliCommandCompleted(true);
+                         return 0;
+                    }
+
                     //ui->temperatureLabel->setText("Temperature:"+QLocale().toString(temp/1000.0));
                     //ui->humidtyLabel->setText("Humidty:"+QLocale().toString(humidity/1000.0));
                     m_sht4xCard->setValue1(temp/1000.0);
@@ -7379,6 +7479,7 @@ uint8_t MainWindow::HandlePacket()
 
                     memcpy(&stm32TEMP,&CMD_Buffer[CMDDATA+5],sizeof(float));
 
+
                     /**
                      * formulas for conversion of the sensor signals, optimized for fixed point
                      * algebra:
@@ -7389,12 +7490,28 @@ uint8_t MainWindow::HandlePacket()
                     qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD isValid:"<<isValid;
                     qDebug() <<"[MainWindow]GET_TH_RESPONSE_CMD stm32TEMP:"<<stm32TEMP;
                     if(isValid==0)
+                    {
+                        if(isCliMode)
+                        {
+                            outMSG << ">> [Hardware Error] Sensor reported invalid data marker." << Qt::endl;
+                            emit cliCommandCompleted(false);
+                        }
                         return 0;
+                    }
 
                     temp = ((21875 * (int32_t)tempRaw) >> 13) - 45000;
                     humidity = ((15625 * (int32_t)humidityRaw) >> 13) - 6000;
 
                     m_STM32TempCard->setValue1(stm32TEMP);
+                    if(isCliMode)
+                    {
+                        outMSG << "\n>> [SHT4x Sensor Read Successful]" << Qt::endl;
+                        outMSG << "[Feedback] SHT4x Temperature: " << QString::number(temp / 1000.0, 'f', 2) << " deg C" << Qt::endl;
+                        outMSG << "[Feedback] SHT4x Humidity: " << QString::number(humidity / 1000.0, 'f', 2) << " %RH" << Qt::endl;
+                        outMSG << "[Feedback] STM32 Temperature: " << QString::number(stm32TEMP) << " deg C" << Qt::endl;
+                        emit cliCommandCompleted(true);
+                        return 0;
+                    }
                     if(sht4xEnable||bSingleRead)
                     {
                         recordSHT4x(0);
@@ -7503,8 +7620,20 @@ uint8_t MainWindow::HandlePacket()
 
                 if(checksum==CMD_Buffer[len+1])
                 {
+
+
                     if(CMD_Buffer[CMDDATA]==BLOCK_ID_PAGE0)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]EEPROM Cache Register Values [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page0->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=0;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7517,6 +7646,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==BLOCK_ID_PAGE2)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]EEPROM Cache Register Values [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page2->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=1;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7529,6 +7668,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==BLOCK_ID_PAGE3)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]EEPROM Cache Register Values [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page3->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=1;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7541,6 +7690,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==BLOCK_ID_PAGE4)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]EEPROM Cache Register Values [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page4->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=1;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7554,6 +7713,14 @@ uint8_t MainWindow::HandlePacket()
                     else if(CMD_Buffer[CMDDATA]==BLOCK_ID_INFO1)
                     {
                         memcpy(&info,&CMD_Buffer[CMDDATA+1],sizeof(DeviceInfo));
+
+                        if(isCliMode)
+                        {
+                            outMSG << "\n[Feedback] Device ID:" << QString::fromLatin1(info.systemSerialnumber) << Qt::endl;
+
+                            emit cliCommandCompleted(true);
+                            return 0;
+                        }
 
                         m_deviceidCard->setDeviceId(QString::fromLatin1(info.systemSerialnumber));
                         //ui->deviceIDlabel->setText(QString::fromLatin1(info.systemSerialnumber));
@@ -7588,8 +7755,19 @@ uint8_t MainWindow::HandlePacket()
 
                 if(checksum==CMD_Buffer[len+1])
                 {
+
                     if(CMD_Buffer[CMDDATA]==0)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]PCMD3140 Physical Registe [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page0->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=0;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7606,6 +7784,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==2)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]PCMD3140 Physical Registe [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page2->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=0;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7618,6 +7806,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==3)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]PCMD3140 Physical Registe [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page3->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=0;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7631,6 +7829,16 @@ uint8_t MainWindow::HandlePacket()
                     }
                     else if(CMD_Buffer[CMDDATA]==4)
                     {
+                        if(isCliMode)
+                        {
+                             outMSG << "\n--- [Feedback]PCMD3140 Physical Registe [Page " << (int)CMD_Buffer[CMDDATA] << "] ---" << Qt::endl;
+                                for (int i = 0; i < len - 3; i++) {
+                                    outMSG << "Reg["<< ui->tableWidget_page4->item(i,0)->text() << "]: 0x"
+                                        << QString("%1").arg(CMD_Buffer[CMDDATA + 1 + i], 2, 16, QLatin1Char('0')).toUpper() << Qt::endl;
+                             }
+                             emit cliCommandCompleted(true);
+                             return 0;
+                        }
                         for(int i=0;i<len-3;i++)
                         {
                             QString value="0x"+QString("%1").arg(CMD_Buffer[CMDDATA+1+i], 2, 16, QLatin1Char('0')).toUpper();
@@ -7644,7 +7852,13 @@ uint8_t MainWindow::HandlePacket()
                 }
                 else
                 {
-                   qDebug() <<"[MainWindow]READ_PCMD_BLOCK_RESPONSE_CMD checksum error!!";
+                    if(isCliMode)
+                    {
+                         outMSG << ">> [Feedback Error] Read PCMD Block Checksum verification failed!" << Qt::endl;
+                         emit cliCommandCompleted(false);
+                         return 0;
+                    }
+                    qDebug() <<"[MainWindow]READ_PCMD_BLOCK_RESPONSE_CMD checksum error!!";
                 }
             }
             break;

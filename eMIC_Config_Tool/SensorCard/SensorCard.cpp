@@ -129,7 +129,7 @@ SensorCard::SensorCard(const QString &title,
         rightLayout->addWidget(m_unit2Label);
 
         valueLayout->addLayout(leftLayout);
-        valueLayout->addSpacing(40);
+        valueLayout->addSpacing(34);
         valueLayout->addLayout(rightLayout);
 
         mainLayout->addSpacing(1);

@@ -9,6 +9,7 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    CLI/clirunner.cpp \
     CheckWorkerThread.cpp \
     LogManager/LogEntry.cpp \
     LogManager/LogManager.cpp \
@@ -24,6 +25,8 @@ SOURCES += \
 
 
 HEADERS += \
+    CLI/clirunner.h \
+    CLI/global.h \
     CheckWorkerThread.h \
     Common/Command.h \
     Common/DeviceInfo.h \
@@ -57,6 +60,7 @@ INCLUDEPATH += $$PWD/. \
                $$PWD/MCP2221 \
                $$PWD/SleepGuard \
                $$PWD/SensorCard \
+               $$PWD/CLI \
                $$PWD/Common
 DEPENDPATH += $$PWD/. \
               $$PWD/MCP2221
